@@ -60,7 +60,8 @@ pub fn package(options: Options) -> Result<(), String> {
     run(Command::new(&service).arg("version"))?;
     let sdk = windows_app_sdk::prepare(false)?;
     let (bootstrapper, _) = windows_app_sdk::bootstrapper(&sdk, "win-x64");
-    let wintun = wintun::library(&wintun::prepare()?, "win-x64")?;
+    let wintun_distribution = wintun::prepare()?;
+    let wintun = wintun::library(&wintun_distribution, "win-x64")?;
     let nsis = root.join("target").join("nsis").join(NSIS_VERSION);
     pinned::unpack(
         &format!(
@@ -94,6 +95,10 @@ pub fn package(options: Options) -> Result<(), String> {
     .arg(define("SERVICE", &service))
     .arg(define("BOOTSTRAPPER", &bootstrapper))
     .arg(define("WINTUN", &wintun))
+    .arg(define(
+        "WINTUN_LICENSE",
+        &wintun_distribution.join("wintun/LICENSE.txt"),
+    ))
     .arg(define("LICENSE", &root.join("LICENSE")))
     .arg(define("ICON", &root.join("desktop/egrio/icons/icon.ico")))
     .arg(define(

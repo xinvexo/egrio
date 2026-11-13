@@ -43,4 +43,10 @@ capture off. See [the engineering guide](AGENTS.md) for more commands.
 
 ## License
 
-[GNU GPL v3.0 only](LICENSE) (`GPL-3.0-only`).
+[GNU GPL v3.0 only with an additional permission for linking with Wintun](LICENSE)
+(`GPL-3.0-only WITH GPL-3.0-linking-exception`).
+
+Windows packages include the official Wintun DLL under its own
+[Prebuilt Binaries License](https://git.zx2c4.com/wintun/tree/prebuilt-binaries-license.txt),
+installed as `Wintun-LICENSE.txt`. See the
+[Windows installer documentation](docs/platforms/windows.md#安装程序) for packaging details.

@@ -7,6 +7,7 @@
 ;   SERVICE          egrio-service.exe
 ;   BOOTSTRAPPER     Microsoft.WindowsAppRuntime.Bootstrap.dll
 ;   WINTUN           wintun.dll
+;   WINTUN_LICENSE   the license from the same official Wintun archive
 ;   LICENSE          the project's distribution license text
 ;   ICON             the plated system app icon
 ;   MARK             the transparent in-window mark
@@ -354,6 +355,7 @@ Function IsOwnFolder
       ${Case} "egrio-service.exe"
       ${Case} "Microsoft.WindowsAppRuntime.Bootstrap.dll"
       ${Case} "wintun.dll"
+      ${Case} "Wintun-LICENSE.txt"
       ${Case} "Egrio-LICENSE.txt"
       ${Case} "uninstall.exe"
         ${Break}
@@ -430,12 +432,14 @@ Section
   File "${SERVICE}"
   File "${BOOTSTRAPPER}"
   File "${WINTUN}"
+  File /oname=Wintun-LICENSE.txt "${WINTUN_LICENSE}"
   File /oname=Egrio-LICENSE.txt "${LICENSE}"
   WriteUninstaller "$INSTDIR\uninstall.exe"
   !insertmacro PROTECT "$INSTDIR\egrio.exe" "${FILE_ACCESS}"
   !insertmacro PROTECT "$INSTDIR\egrio-service.exe" "${FILE_ACCESS}"
   !insertmacro PROTECT "$INSTDIR\Microsoft.WindowsAppRuntime.Bootstrap.dll" "${FILE_ACCESS}"
   !insertmacro PROTECT "$INSTDIR\wintun.dll" "${FILE_ACCESS}"
+  !insertmacro PROTECT "$INSTDIR\Wintun-LICENSE.txt" "${FILE_ACCESS}"
   !insertmacro PROTECT "$INSTDIR\Egrio-LICENSE.txt" "${FILE_ACCESS}"
   !insertmacro PROTECT "$INSTDIR\uninstall.exe" "${FILE_ACCESS}"
 
@@ -505,6 +509,7 @@ Section Uninstall
   Delete "$INSTDIR\egrio-service.exe"
   Delete "$INSTDIR\Microsoft.WindowsAppRuntime.Bootstrap.dll"
   Delete "$INSTDIR\wintun.dll"
+  Delete "$INSTDIR\Wintun-LICENSE.txt"
   Delete "$INSTDIR\Egrio-LICENSE.txt"
   Delete "$INSTDIR\uninstall.exe"
   RMDir "$INSTDIR"

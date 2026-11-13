@@ -19,7 +19,8 @@ Ubuntu 机器上各自运行 `cargo xtask package`，把得到的安装包连同
 
 ## 准备
 
-- 根目录的 [LICENSE](../../LICENSE) 是三个平台打包的共同输入，随安装包携带；安装后的路径见对应平台文档。
+- 根目录的 [LICENSE](../../LICENSE) 包含 GPLv3 正文与 Wintun 链接附加许可，是三个平台打包的共同输入，随安装包携带；
+  Windows 同时携带 Wintun 自身的许可，安装后的路径与来源见 [Windows 安装程序](../platforms/windows.md#安装程序)。
 - 发布页面须能取得对应版本的源码与 `LICENSE`；使用独立发行仓库时，提供实际源码版本或标签的链接。
 - 仓库的 Actions secrets：
   - `MACOS_CERTIFICATE`：Developer ID Application 证书连同私钥导出的 `.p12`，base64 编码；`MACOS_CERTIFICATE_PASSWORD`

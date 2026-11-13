@@ -1,3 +1,23 @@
+Egrio is licensed under the GNU General Public License, version 3 only,
+with the additional permission below. This permission applies to Egrio
+code covered by this LICENSE. Third-party components retain their own
+licenses.
+
+Additional permission under GNU GPL version 3 section 7
+
+If you modify this Program, or any covered work, by linking or combining
+it with the official Wintun prebuilt library (wintun.dll) distributed by
+WireGuard LLC (or a modified version of that library), containing parts
+covered by the terms of the Wintun Prebuilt Binaries License, the licensors
+of this Program grant you additional permission to convey the resulting
+work.
+
+This additional permission does not replace or alter Wintun's own license
+and does not itself authorize modifying or relicensing wintun.dll. The
+official binaries and their license are available at https://www.wintun.net/.
+
+The GNU General Public License, version 3, follows in full.
+
                     GNU GENERAL PUBLIC LICENSE
                        Version 3, 29 June 2007
 

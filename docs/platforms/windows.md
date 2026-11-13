@@ -485,7 +485,8 @@ release 构建，确认两者都不导入 Visual C++ 运行时的 DLL、服务�
 SDK 的部署指南要求非打包应用自己带上它。`build.rs` 把应用图标与版本信息写成资源文件交给链接器，资源管理器、开始菜单、
 “已安装的应用”与任务管理器因此显示 Egrio 的图标与名称。
 
-安装程序要求管理员权限，为所有用户安装 `egrio.exe`、`egrio-service.exe`、引导程序、`wintun.dll`、`Egrio-LICENSE.txt` 与卸载程序，页面依次是
+安装程序要求管理员权限，为所有用户安装 `egrio.exe`、`egrio-service.exe`、引导程序、`wintun.dll`、`Egrio-LICENSE.txt`、
+`Wintun-LICENSE.txt` 与卸载程序，页面依次是
 欢迎（安装或更新，与版本）、安装位置、进度与完成。安装位置首次是 `Program Files\Egrio`，之后是当前安装的位置（卸载登记的
 `InstallLocation`），每次都能改，磁盘根目录与已有其他内容的文件夹也可以；“浏览”选中的文件夹后面按 NSIS 的惯例接上
 `Egrio`。完成页的“运行 Egrio”默认勾选，经 Explorer 启动应用（`explorer.exe <路径>`），应用于是以登录用户自己的权限
@@ -495,8 +496,11 @@ SDK 的部署指南要求非打包应用自己带上它。`build.rs` 把应用�
 安装与卸载程序的文件、任务栏图标使用应用图标；页面内的侧栏和页头使用独立的透明底雪花（见[图标](../../design/icons/README.md)）。
 侧栏按显示缩放选位图，页头通过 Modern UI 的 `MUI_HEADERIMAGE_BITMAP` 装入并缩放到控件；卸载页复用同一页头。
 两者的 GUI 初始化回调按窗口 DPI 载入透明图，只以 `WM_SETICON(ICON_SMALL)` 设置标题栏的小图标；大图标独立。
-该图标一直供窗口使用，由安装、卸载进程结束时释放。许可证文本由根目录 `LICENSE` 原样安装到安装目录的
-`Egrio-LICENSE.txt`，按应用文件设置权限，并随卸载删除。
+该图标一直供窗口使用，由安装、卸载进程结束时释放。许可证文本由根目录 [LICENSE](../../LICENSE) 原样安装到安装目录的
+`Egrio-LICENSE.txt`。Wintun 使用官方预编译 DLL，从同一份按 SHA-256 校验的官方 ZIP 中取出 `LICENSE.txt`，
+原样安装为 `Wintun-LICENSE.txt`，DLL 仍按该许可授权。两份许可文件均按应用文件设置权限，并随卸载删除。
+官方依据见 [Wintun 分发说明](https://www.wintun.net/)与
+[预编译二进制许可](https://git.zx2c4.com/wintun/tree/prebuilt-binaries-license.txt)。
 安装依次：
 
 1. 运行 `runtime.ps1`：当前用户已注册 x64 的 `Microsoft.WindowsAppRuntime.2` 框架包、且不低于应用构建所用的 2.6.5 时
