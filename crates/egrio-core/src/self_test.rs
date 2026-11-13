@@ -539,7 +539,7 @@ impl SlowDns {
                 let Ok(request) = crate::dns::wire::decode(&buffer[..length]) else {
                     continue;
                 };
-                let Some(question) = request.query().cloned() else {
+                let Some(question) = request.queries.first().cloned() else {
                     continue;
                 };
                 if question.query_type() == RecordType::A {

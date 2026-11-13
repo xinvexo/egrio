@@ -18,13 +18,9 @@ pub(crate) fn query(host: &str, qtype: RecordType) -> Result<Message, String> {
     let mut name =
         Name::from_str_relaxed(host).map_err(|error| format!("invalid DNS query name: {error}"))?;
     name.set_fqdn(true);
-    let mut request = Message::new();
-    request
-        .set_id(rand::random())
-        .set_message_type(MessageType::Query)
-        .set_op_code(OpCode::Query)
-        .set_recursion_desired(true)
-        .add_query(Query::query(name, qtype));
+    let mut request = Message::new(rand::random(), MessageType::Query, OpCode::Query);
+    request.metadata.recursion_desired = true;
+    request.add_query(Query::query(name, qtype));
     Ok(request)
 }
 
@@ -49,10 +45,10 @@ pub(crate) fn encode(message: &Message) -> Result<Vec<u8>, String> {
 }
 
 pub(crate) fn validate_request(request: &Message) -> Result<(), String> {
-    if request.message_type() != MessageType::Query || request.op_code() != OpCode::Query {
+    if request.message_type != MessageType::Query || request.op_code != OpCode::Query {
         return Err("DNS request must be a standard query".into());
     }
-    if request.queries().len() != 1 {
+    if request.queries.len() != 1 {
         return Err("DNS request must contain exactly one question".into());
     }
     Ok(())
@@ -60,10 +56,10 @@ pub(crate) fn validate_request(request: &Message) -> Result<(), String> {
 
 pub(crate) fn validate_response(request: &Message, answer: &Message) -> Result<(), String> {
     validate_request(request)?;
-    if answer.message_type() != MessageType::Response || answer.op_code() != request.op_code() {
+    if answer.message_type != MessageType::Response || answer.op_code != request.op_code {
         return Err("DNS response has invalid transaction flags".into());
     }
-    if answer.id() != request.id() {
+    if answer.id != request.id {
         return Err("DNS response ID mismatch".into());
     }
     // Name equality in Hickory is DNS case-insensitive, while class/type are
@@ -71,25 +67,21 @@ pub(crate) fn validate_response(request: &Message, answer: &Message) -> Result<(
     // Format/refusal failures may contain only a response header. A matched
     // peer/ID/opcode still carries an RCODE; never turn that into a timeout.
     let header_only_error =
-        answer.queries().is_empty() && answer.response_code() != ResponseCode::NoError;
-    if !header_only_error && answer.queries() != request.queries() {
+        answer.queries.is_empty() && answer.response_code != ResponseCode::NoError;
+    if !header_only_error && answer.queries != request.queries {
         return Err("DNS response question mismatch".into());
     }
     Ok(())
 }
 
 pub(crate) fn response(request: &Message, rcode: ResponseCode) -> Message {
-    let mut answer = Message::new();
-    answer
-        .set_id(request.id())
-        .set_message_type(MessageType::Response)
-        .set_op_code(request.op_code())
-        .set_recursion_desired(request.recursion_desired())
-        .set_recursion_available(true)
-        .set_checking_disabled(request.checking_disabled())
-        .set_response_code(rcode)
-        .add_queries(request.queries().iter().cloned());
-    if let Some(request_edns) = request.extensions() {
+    let mut answer = Message::response(request.id, request.op_code);
+    answer.metadata.recursion_desired = request.recursion_desired;
+    answer.metadata.recursion_available = true;
+    answer.metadata.checking_disabled = request.checking_disabled;
+    answer.metadata.response_code = rcode;
+    answer.add_queries(request.queries.iter().cloned());
+    if let Some(request_edns) = request.edns.as_ref() {
         let mut edns = Edns::new();
         edns.set_max_payload(request_edns.max_payload())
             .set_dnssec_ok(request_edns.flags().dnssec_ok);
@@ -99,7 +91,10 @@ pub(crate) fn response(request: &Message, rcode: ResponseCode) -> Message {
 }
 
 fn terminal_owner(message: &Message) -> Result<Name, String> {
-    let question = message.query().ok_or("DNS response has no question")?;
+    let question = message
+        .queries
+        .first()
+        .ok_or("DNS response has no question")?;
     let mut owner = question.name().to_lowercase();
     let mut visited = HashSet::new();
     loop {
@@ -107,11 +102,11 @@ fn terminal_owner(message: &Message) -> Result<Name, String> {
             return Err("DNS CNAME loop".into());
         }
         let mut next = None;
-        for record in message.answers() {
-            if record.name() != &owner || record.dns_class() != question.query_class() {
+        for record in &message.answers {
+            if record.name != owner || record.dns_class != question.query_class() {
                 continue;
             }
-            if let RData::CNAME(alias) = record.data() {
+            if let RData::CNAME(alias) = &record.data {
                 let alias = alias.0.to_lowercase();
                 if next.as_ref().is_some_and(|previous| previous != &alias) {
                     return Err("DNS owner has conflicting CNAME targets".into());
@@ -127,16 +122,16 @@ fn terminal_owner(message: &Message) -> Result<Name, String> {
 }
 
 pub(crate) fn addresses(message: &Message) -> Result<Vec<IpAddr>, String> {
-    if message.message_type() != MessageType::Response || message.queries().len() != 1 {
+    if message.message_type != MessageType::Response || message.queries.len() != 1 {
         return Err("DNS address response must contain one echoed question".into());
     }
-    if message.truncated() {
+    if message.truncation {
         return Err("DNS address response is truncated".into());
     }
-    if message.response_code() != ResponseCode::NoError {
-        return Err(format!("DNS response returned {}", message.response_code()));
+    if message.response_code != ResponseCode::NoError {
+        return Err(format!("DNS response returned {}", message.response_code));
     }
-    let question = message.query().expect("one DNS question");
+    let question = message.queries.first().expect("one DNS question");
     if question.query_class() != DNSClass::IN
         || !matches!(question.query_type(), RecordType::A | RecordType::AAAA)
     {
@@ -144,14 +139,14 @@ pub(crate) fn addresses(message: &Message) -> Result<Vec<IpAddr>, String> {
     }
     let owner = terminal_owner(message)?;
     let mut addresses = Vec::new();
-    for record in message.answers() {
-        if record.name() != &owner
-            || record.dns_class() != question.query_class()
+    for record in &message.answers {
+        if record.name != owner
+            || record.dns_class != question.query_class()
             || record.record_type() != question.query_type()
         {
             continue;
         }
-        let address = match record.data() {
+        let address = match &record.data {
             RData::A(value) => IpAddr::V4(value.0),
             RData::AAAA(value) => IpAddr::V6(value.0),
             _ => continue,
@@ -186,22 +181,22 @@ const MAX_NEGATIVE_TTL: u32 = 900;
 /// by any CNAME TTL on the way. An answer without an SOA is not cached
 /// (section 5), and neither is any other failure.
 pub(crate) fn negative_ttl(message: &Message) -> Option<Duration> {
-    if message.message_type() != MessageType::Response
-        || message.op_code() != OpCode::Query
-        || message.truncated()
-        || message.queries().len() != 1
-        || !message.signature().is_empty()
+    if message.message_type != MessageType::Response
+        || message.op_code != OpCode::Query
+        || message.truncation
+        || message.queries.len() != 1
+        || message.signature.is_some()
     {
         return None;
     }
-    let question = message.query()?;
-    match message.response_code() {
+    let question = message.queries.first()?;
+    match message.response_code {
         ResponseCode::NXDomain => {}
         ResponseCode::NoError => {
             let owner = terminal_owner(message).ok()?;
-            if message.answers().iter().any(|record| {
-                record.name() == &owner
-                    && record.dns_class() == question.query_class()
+            if message.answers.iter().any(|record| {
+                record.name == owner
+                    && record.dns_class == question.query_class()
                     && (record.record_type() == question.query_type()
                         || question.query_type() == RecordType::ANY)
             }) {
@@ -211,31 +206,31 @@ pub(crate) fn negative_ttl(message: &Message) -> Option<Duration> {
         _ => return None,
     }
     let soa = message
-        .name_servers()
+        .authorities
         .iter()
-        .find_map(|record| match record.data() {
-            RData::SOA(soa) => Some(valid_ttl(record.ttl()).min(soa.minimum())),
+        .find_map(|record| match &record.data {
+            RData::SOA(soa) => Some(valid_ttl(record.ttl).min(soa.minimum)),
             _ => None,
         })?;
     let ttl = message
-        .answers()
+        .answers
         .iter()
-        .map(|record| valid_ttl(record.ttl()))
+        .map(|record| valid_ttl(record.ttl))
         .fold(soa.min(MAX_NEGATIVE_TTL), u32::min);
     (ttl > 0).then(|| Duration::from_secs(u64::from(ttl)))
 }
 
 pub(crate) fn positive_ttl(message: &Message) -> Option<Duration> {
-    if message.message_type() != MessageType::Response
-        || message.op_code() != OpCode::Query
-        || message.response_code() != ResponseCode::NoError
-        || message.truncated()
-        || message.queries().len() != 1
-        || !message.signature().is_empty()
+    if message.message_type != MessageType::Response
+        || message.op_code != OpCode::Query
+        || message.response_code != ResponseCode::NoError
+        || message.truncation
+        || message.queries.len() != 1
+        || message.signature.is_some()
     {
         return None;
     }
-    let question = message.query()?;
+    let question = message.queries.first()?;
     let owner = if question.query_type() == RecordType::CNAME {
         question.name().clone()
     } else {
@@ -243,9 +238,9 @@ pub(crate) fn positive_ttl(message: &Message) -> Option<Duration> {
     };
     // A CNAME chain ending in NODATA is a negative answer, not a positive A
     // cache entry. Generic types (TXT/SRV/HTTPS/etc.) retain their full RDATA.
-    if !message.answers().iter().any(|record| {
-        record.name() == &owner
-            && record.dns_class() == question.query_class()
+    if !message.answers.iter().any(|record| {
+        record.name == owner
+            && record.dns_class == question.query_class()
             && (record.record_type() == question.query_type()
                 || question.query_type() == RecordType::ANY)
     }) {
@@ -254,7 +249,7 @@ pub(crate) fn positive_ttl(message: &Message) -> Option<Duration> {
     let ttl = message
         .all_sections()
         .filter(|record| record.record_type() != RecordType::OPT)
-        .map(|record| valid_ttl(record.ttl()))
+        .map(|record| valid_ttl(record.ttl))
         .min()?;
     (ttl > 0).then(|| Duration::from_secs(u64::from(ttl)))
 }
@@ -269,13 +264,13 @@ pub(crate) fn age_ttls(message: &mut Message, age: Duration) {
     fn age_records(records: &mut [Record], elapsed: u32) {
         for record in records {
             if record.record_type() != RecordType::OPT {
-                record.set_ttl(valid_ttl(record.ttl()).saturating_sub(elapsed));
+                record.ttl = valid_ttl(record.ttl).saturating_sub(elapsed);
             }
         }
     }
-    age_records(message.answers_mut(), elapsed);
-    age_records(message.name_servers_mut(), elapsed);
-    age_records(message.additionals_mut(), elapsed);
+    age_records(&mut message.answers, elapsed);
+    age_records(&mut message.authorities, elapsed);
+    age_records(&mut message.additionals, elapsed);
 }
 
 #[cfg(test)]
@@ -289,6 +284,30 @@ mod tests {
     }
 
     #[test]
+    fn queries_and_responses_preserve_header_flags_without_unsolicited_edns() {
+        let mut request = query("example.test.", RecordType::A).unwrap();
+        request.metadata.id = 0x1234;
+        let encoded = encode(&request).unwrap();
+        assert_eq!(
+            &encoded[..12],
+            &[0x12, 0x34, 0x01, 0x00, 0, 1, 0, 0, 0, 0, 0, 0]
+        );
+        assert_eq!(request.max_payload(), 512);
+
+        request.metadata.recursion_desired = false;
+        request.metadata.checking_disabled = true;
+        let answer = response(&request, ResponseCode::Refused);
+        let encoded = encode(&answer).unwrap();
+        assert_eq!(
+            &encoded[..12],
+            &[0x12, 0x34, 0x80, 0x95, 0, 1, 0, 0, 0, 0, 0, 0]
+        );
+        let decoded = decode(&encoded).unwrap();
+        validate_response(&request, &decoded).unwrap();
+        assert!(decoded.edns.is_none());
+    }
+
+    #[test]
     fn full_messages_round_trip_with_non_address_records_and_rcodes() {
         let request = query("example.test.", RecordType::TXT).unwrap();
         let mut answer = response(&request, ResponseCode::NoError);
@@ -297,7 +316,7 @@ mod tests {
             60,
             RData::TXT(TXT::new(vec!["v=example value".into()])),
         ));
-        answer.add_name_server(record(
+        answer.add_authority(record(
             "test.",
             30,
             RData::NS(NS(Name::from_ascii("ns.test.").unwrap())),
@@ -305,14 +324,14 @@ mod tests {
         answer.add_additional(record("ns.test.", 20, RData::A(A(Ipv4Addr::LOCALHOST))));
         let decoded = decode(&encode(&answer).unwrap()).unwrap();
         validate_response(&request, &decoded).unwrap();
-        assert_eq!(decoded.answers(), answer.answers());
-        assert_eq!(decoded.name_servers(), answer.name_servers());
-        assert_eq!(decoded.additionals(), answer.additionals());
+        assert_eq!(decoded.answers, answer.answers);
+        assert_eq!(decoded.authorities, answer.authorities);
+        assert_eq!(decoded.additionals, answer.additionals);
         assert_eq!(positive_ttl(&decoded), Some(Duration::from_secs(20)));
         let negative = response(&request, ResponseCode::NXDomain);
         let negative = decode(&encode(&negative).unwrap()).unwrap();
         validate_response(&request, &negative).unwrap();
-        assert_eq!(negative.response_code(), ResponseCode::NXDomain);
+        assert_eq!(negative.response_code, ResponseCode::NXDomain);
         assert!(positive_ttl(&negative).is_none());
     }
 
@@ -321,21 +340,21 @@ mod tests {
         let request = query("example.test.", RecordType::A).unwrap();
         let mut answer = response(&request, ResponseCode::ServFail);
         validate_response(&request, &answer).unwrap();
-        answer.set_truncated(true);
+        answer.metadata.truncation = true;
         validate_response(&request, &answer).unwrap();
-        answer.set_id(request.id().wrapping_add(1));
+        answer.metadata.id = request.id.wrapping_add(1);
         assert!(validate_response(&request, &answer)
             .unwrap_err()
             .contains("ID"));
-        answer.set_id(request.id());
-        answer.queries_mut()[0].set_query_type(RecordType::AAAA);
+        answer.metadata.id = request.id;
+        answer.queries[0].set_query_type(RecordType::AAAA);
         assert!(validate_response(&request, &answer)
             .unwrap_err()
             .contains("question"));
         let mut case = response(&request, ResponseCode::NoError);
-        case.queries_mut()[0].set_name(Name::from_ascii("EXAMPLE.TEST.").unwrap());
+        case.queries[0].set_name(Name::from_ascii("EXAMPLE.TEST.").unwrap());
         validate_response(&request, &case).unwrap();
-        case.set_op_code(OpCode::Status);
+        case.metadata.op_code = OpCode::Status;
         assert!(validate_response(&request, &case).is_err());
     }
 
@@ -349,15 +368,15 @@ mod tests {
             ResponseCode::Refused,
         ] {
             let mut error = response(&request, rcode);
-            error.queries_mut().clear();
+            error.queries.clear();
             validate_response(&request, &error).unwrap();
             let decoded = decode(&encode(&error).unwrap()).unwrap();
-            assert_eq!(decoded.response_code(), rcode);
+            assert_eq!(decoded.response_code, rcode);
             validate_response(&request, &decoded).unwrap();
             assert!(positive_ttl(&decoded).is_none());
         }
         let mut malformed = response(&request, ResponseCode::NoError);
-        malformed.queries_mut().clear();
+        malformed.queries.clear();
         assert!(validate_response(&request, &malformed).is_err());
     }
 
@@ -420,15 +439,15 @@ mod tests {
         let request = query("v4only.test.", RecordType::AAAA).unwrap();
         // NODATA: the name exists, with no AAAA record.
         let mut nodata = response(&request, ResponseCode::NoError);
-        nodata.add_name_server(soa(398, 3600));
+        nodata.add_authority(soa(398, 3600));
         assert_eq!(negative_ttl(&nodata), Some(Duration::from_secs(398)));
         assert!(positive_ttl(&nodata).is_none());
         // The lesser of the SOA's TTL and its MINIMUM, then the cap.
         let mut nxdomain = response(&request, ResponseCode::NXDomain);
-        nxdomain.add_name_server(soa(600, 180));
+        nxdomain.add_authority(soa(600, 180));
         assert_eq!(negative_ttl(&nxdomain), Some(Duration::from_secs(180)));
         let mut long = response(&request, ResponseCode::NXDomain);
-        long.add_name_server(soa(86400, 86400));
+        long.add_authority(soa(86400, 86400));
         assert_eq!(
             negative_ttl(&long),
             Some(Duration::from_secs(u64::from(MAX_NEGATIVE_TTL)))
@@ -440,7 +459,7 @@ mod tests {
             30,
             RData::CNAME(CNAME(Name::from_ascii("target.test.").unwrap())),
         ));
-        chained.add_name_server(soa(398, 3600));
+        chained.add_authority(soa(398, 3600));
         assert_eq!(negative_ttl(&chained), Some(Duration::from_secs(30)));
         // Without an SOA, an answer, or another failure, nothing is cached.
         assert!(negative_ttl(&response(&request, ResponseCode::NXDomain)).is_none());
@@ -450,10 +469,10 @@ mod tests {
             60,
             RData::AAAA(AAAA(Ipv6Addr::LOCALHOST)),
         ));
-        answered.add_name_server(soa(398, 3600));
+        answered.add_authority(soa(398, 3600));
         assert!(negative_ttl(&answered).is_none());
         let mut failed = response(&request, ResponseCode::ServFail);
-        failed.add_name_server(soa(398, 3600));
+        failed.add_authority(soa(398, 3600));
         assert!(negative_ttl(&failed).is_none());
         // The SOA survives the wire.
         let decoded = decode(&encode(&nodata).unwrap()).unwrap();
@@ -473,13 +492,13 @@ mod tests {
             RData::A(A(Ipv4Addr::LOCALHOST)),
         ));
         age_ttls(&mut answer, Duration::from_millis(1500));
-        assert_eq!(answer.answers()[0].ttl(), 58);
-        assert!(answer.extensions().as_ref().unwrap().flags().dnssec_ok);
-        assert_eq!(answer.extensions().as_ref().unwrap().max_payload(), 1232);
-        answer.answers_mut()[0].set_ttl(0x8000_0001);
+        assert_eq!(answer.answers[0].ttl, 58);
+        assert!(answer.edns.as_ref().unwrap().flags().dnssec_ok);
+        assert_eq!(answer.edns.as_ref().unwrap().max_payload(), 1232);
+        answer.answers[0].ttl = 0x8000_0001;
         assert!(positive_ttl(&answer).is_none());
         age_ttls(&mut answer, Duration::ZERO);
-        assert_eq!(answer.answers()[0].ttl(), 0);
+        assert_eq!(answer.answers[0].ttl, 0);
     }
 
     #[test]
@@ -487,7 +506,7 @@ mod tests {
         for host in ["service_label.test", "_service._tcp.test", "例子.test"] {
             let request = query(host, RecordType::TXT).unwrap();
             let decoded = decode(&encode(&request).unwrap()).unwrap();
-            assert_eq!(decoded.queries(), request.queries());
+            assert_eq!(decoded.queries, request.queries);
             validate_response(&request, &response(&decoded, ResponseCode::NoError)).unwrap();
         }
     }

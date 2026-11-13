@@ -112,7 +112,7 @@ pub(super) async fn exchange(
                 }
             }
         };
-        if !reply.truncated() {
+        if !reply.truncation {
             return Ok(reply);
         }
         return exchange_framed(
@@ -358,7 +358,7 @@ pub(crate) async fn exchange_tcp(
         .map_err(|error| error.to_string())?;
     let response = wire::decode(&response)?;
     wire::validate_response(request, &response)?;
-    if response.truncated() {
+    if response.truncation {
         return Err("DNS TCP response is truncated".into());
     }
     Ok(response)
@@ -372,7 +372,7 @@ fn http_request(
     h2: bool,
 ) -> Result<(http::Request<Full<Bytes>>, Message), String> {
     let mut http_query = request.clone();
-    http_query.set_id(0);
+    http_query.metadata.id = 0;
     let authority = ConnectTarget {
         host: upstream.host.clone(),
         port: upstream.port,
@@ -416,7 +416,7 @@ async fn exchange_http2(
         .await
         .map_err(|error| HttpFailure::Connection(http_error("HTTP/2 request", &error)))?;
     let mut reply = decode_http(reply, &http_query).await?;
-    reply.set_id(request.id());
+    reply.metadata.id = request.id;
     Ok(reply)
 }
 
@@ -441,7 +441,7 @@ async fn exchange_http1(
             .map_err(HttpFailure::into_message)
     })
     .await?;
-    reply.set_id(request.id());
+    reply.metadata.id = request.id;
     Ok(reply)
 }
 
@@ -490,7 +490,7 @@ async fn decode_http(
         .to_bytes();
     let mut reply = wire::decode(&body).map_err(HttpFailure::Answer)?;
     wire::validate_response(request, &reply).map_err(HttpFailure::Answer)?;
-    if reply.truncated() {
+    if reply.truncation {
         return Err(HttpFailure::Answer("DNS HTTP response is truncated".into()));
     }
     wire::age_ttls(&mut reply, std::time::Duration::from_secs(age));

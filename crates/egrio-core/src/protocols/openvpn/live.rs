@@ -384,8 +384,8 @@ async fn the_node_reaches_hosts_behind_the_vpn() {
                     from.host,
                     from.port,
                     sent.elapsed(),
-                    answer.response_code(),
-                    answer.answers().len()
+                    answer.response_code,
+                    answer.answers.len()
                 );
             }
             other => println!(

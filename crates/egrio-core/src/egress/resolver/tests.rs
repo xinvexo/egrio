@@ -93,8 +93,8 @@ async fn nxdomain_does_not_failover_or_become_a_tcp_destination() {
         .resolve(&egress, "absent.test", DNS_TYPE_A)
         .await
         .unwrap();
-    assert_eq!(u16::from(answer.response_code()), 3);
-    assert!(answer.answers().is_empty());
+    assert_eq!(u16::from(answer.response_code), 3);
+    assert!(answer.answers.is_empty());
     assert_eq!(alternate.queries.load(Ordering::SeqCst), 0);
     assert!(egress
         .connect_tcp_host("absent.test", 443, "test")
@@ -124,7 +124,7 @@ async fn servfail_can_use_another_configured_resolver() {
         .resolve(&egress, "available.test", DNS_TYPE_A)
         .await
         .unwrap();
-    assert_eq!(answer.response_code(), ResponseCode::NoError);
+    assert_eq!(answer.response_code, ResponseCode::NoError);
     assert_eq!(
         wire::addresses(&answer).unwrap(),
         vec!["192.0.2.1".parse::<IpAddr>().unwrap()]

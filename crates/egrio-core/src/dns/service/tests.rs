@@ -24,7 +24,12 @@ async fn exchange(
     context: QueryContext,
 ) -> Result<Message, String> {
     let host = crate::dns::resolver::normalize_domain(
-        &request.query().expect("a question").name().to_utf8(),
+        &request
+            .queries
+            .first()
+            .expect("a question")
+            .name()
+            .to_utf8(),
     );
     let plan = dns.plan(&host, purpose, &context);
     dns.exchange_with_plan(request, purpose, context, plan)
@@ -71,7 +76,7 @@ async fn udp_dns_reply(ip: Option<&str>, code: ResponseCode, delay: Duration) ->
             let request = wire::decode(&bytes[..len]).unwrap();
             tokio::time::sleep(delay).await;
             let mut reply = wire::response(&request, code);
-            let query = request.query().unwrap();
+            let query = request.queries.first().unwrap();
             let data = match (query.query_type(), ip) {
                 (RecordType::A, Some(IpAddr::V4(ip))) => Some(RData::A(A(ip))),
                 (RecordType::AAAA, Some(IpAddr::V6(ip))) => Some(RData::AAAA(AAAA(ip))),
@@ -122,7 +127,7 @@ async fn tcp_dns(ip: &str) -> Stub {
             let request = wire::decode(&bytes).unwrap();
             let mut reply = wire::response(&request, ResponseCode::NoError);
             reply.add_answer(Record::from_rdata(
-                request.query().unwrap().name().clone(),
+                request.queries.first().unwrap().name().clone(),
                 30,
                 RData::A(A(ip)),
             ));
@@ -239,8 +244,8 @@ async fn unconfigured_dns_uses_physical_snapshot_and_forwards_txt_records() {
     .await
     .unwrap();
     let reply = wire::decode(&reply).unwrap();
-    assert!(matches!(reply.answers()[0].data(), RData::TXT(_)));
-    assert_eq!(reply.id(), query.id());
+    assert!(matches!(reply.answers[0].data, RData::TXT(_)));
+    assert_eq!(reply.id, query.id);
     assert_eq!(dns.count.load(Ordering::SeqCst), 1);
 }
 
@@ -404,7 +409,7 @@ async fn a_direct_target_with_only_proxy_source_does_not_invent_system_fallback(
     .await
     .unwrap();
     assert_eq!(
-        wire::decode(&response).unwrap().response_code(),
+        wire::decode(&response).unwrap().response_code,
         ResponseCode::ServFail
     );
     assert_eq!(system.count.load(Ordering::SeqCst), 0);
@@ -909,11 +914,14 @@ async fn node_doh_uses_direct_bootstrap_without_business_dns_or_policy_recursion
                 assert_eq!(request.uri().path(), "/dns-query");
                 let bytes = request.into_body().collect().await.unwrap().to_bytes();
                 let query = wire::decode(&bytes).unwrap();
-                assert_eq!(query.query().unwrap().name().to_utf8(), "node.test.");
+                assert_eq!(
+                    query.queries.first().unwrap().name().to_utf8(),
+                    "node.test."
+                );
                 count.fetch_add(1, Ordering::SeqCst);
                 let mut reply = wire::response(&query, ResponseCode::NoError);
                 reply.add_answer(Record::from_rdata(
-                    query.query().unwrap().name().clone(),
+                    query.queries.first().unwrap().name().clone(),
                     30,
                     RData::A(A(std::net::Ipv4Addr::LOCALHOST)),
                 ));
@@ -1031,8 +1039,8 @@ async fn retryable_dns_failures_advance_but_valid_negative_answers_stop() {
                 vec!["192.0.2.2".parse::<IpAddr>().unwrap()]
             );
         } else {
-            assert_eq!(reply.response_code(), code);
-            assert!(reply.answers().is_empty());
+            assert_eq!(reply.response_code, code);
+            assert!(reply.answers.is_empty());
         }
     }
     let closed = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -1247,12 +1255,12 @@ async fn fake_names_bind_no_service_and_ask_no_upstream_for_it() {
         .unwrap();
         let reply = wire::decode(&reply).unwrap();
         assert_eq!(
-            reply.response_code(),
+            reply.response_code,
             ResponseCode::NoError,
             "{host} {record}"
         );
         if asked == 0 {
-            assert!(reply.answers().is_empty(), "{host} {record}");
+            assert!(reply.answers.is_empty(), "{host} {record}");
         }
         assert_eq!(dns.count.load(Ordering::SeqCst), asked, "{host} {record}");
     }
@@ -1308,8 +1316,8 @@ async fn strict_global_resolves_names_only_past_the_proxy() {
             [IpAddr::V4(ip)] if ip.octets()[..2] == [198, 18]
         ));
         let reply = ask(core, "business.test", RecordType::TXT).await;
-        assert_eq!(reply.response_code(), ResponseCode::NoError);
-        assert!(reply.answers().is_empty());
+        assert_eq!(reply.response_code, ResponseCode::NoError);
+        assert!(reply.answers.is_empty());
     }
     assert_eq!(system.count.load(Ordering::SeqCst), 0);
 
@@ -1330,7 +1338,7 @@ async fn strict_global_resolves_names_only_past_the_proxy() {
     let core = compile(&profile);
     assert!(!core.dns_service().strict_global());
     let reply = ask(core, "business.test", RecordType::TXT).await;
-    assert!(matches!(reply.answers()[0].data(), RData::TXT(_)));
+    assert!(matches!(reply.answers[0].data, RData::TXT(_)));
     assert_eq!(system.count.load(Ordering::SeqCst), 1);
 }
 
@@ -1434,10 +1442,13 @@ async fn dns_over_socks_tcp_uses_the_selected_connector_and_numeric_resolver_end
         let mut bytes = vec![0; len];
         stream.read_exact(&mut bytes).await.unwrap();
         let query = wire::decode(&bytes).unwrap();
-        assert_eq!(query.query().unwrap().name().to_utf8(), "business.test.");
+        assert_eq!(
+            query.queries.first().unwrap().name().to_utf8(),
+            "business.test."
+        );
         let mut reply = wire::response(&query, ResponseCode::NoError);
         reply.add_answer(Record::from_rdata(
-            query.query().unwrap().name().clone(),
+            query.queries.first().unwrap().name().clone(),
             30,
             RData::A(A("192.0.2.9".parse().unwrap())),
         ));
@@ -1703,7 +1714,7 @@ async fn non_in_questions_bypass_fake_mode_and_preserve_upstream_outcome() {
         let (length, peer) = socket.recv_from(&mut bytes).await.unwrap();
         let query = wire::decode(&bytes[..length]).unwrap();
         assert_eq!(
-            query.query().unwrap().query_class(),
+            query.queries.first().unwrap().query_class(),
             hickory_proto::rr::DNSClass::CH
         );
         socket
@@ -1719,7 +1730,7 @@ async fn non_in_questions_bypass_fake_mode_and_preserve_upstream_outcome() {
     profile.dns.enhanced_mode = DnsMode::FakeIp;
     let core = runtime(&profile);
     let mut query = wire::query("chaos.test", RecordType::A).unwrap();
-    query.queries_mut()[0].set_query_class(hickory_proto::rr::DNSClass::CH);
+    query.queries[0].set_query_class(hickory_proto::rr::DNSClass::CH);
     let response = crate::dns::resolver::resolve_dns_query_payload(
         &core,
         &wire::encode(&query).unwrap(),
@@ -1729,7 +1740,7 @@ async fn non_in_questions_bypass_fake_mode_and_preserve_upstream_outcome() {
     .await
     .unwrap();
     assert_eq!(
-        wire::decode(&response).unwrap().response_code(),
+        wire::decode(&response).unwrap().response_code,
         ResponseCode::Refused
     );
     server.await.unwrap();
@@ -1785,7 +1796,7 @@ async fn hostname_dns_routes_with_both_bootstrap_ip_and_domain_before_cache_look
             let index = count.fetch_add(1, Ordering::SeqCst) + 1;
             let mut reply = wire::response(&request, ResponseCode::NoError);
             reply.add_answer(Record::from_rdata(
-                request.query().unwrap().name().clone(),
+                request.queries.first().unwrap().name().clone(),
                 30,
                 RData::A(A(std::net::Ipv4Addr::new(192, 0, 2, index as u8))),
             ));
@@ -1993,7 +2004,7 @@ async fn an_answer_past_its_ttl_serves_at_once_while_one_lookup_refreshes_it() {
             let request = wire::decode(&bytes[..len]).unwrap();
             let mut reply = wire::response(&request, ResponseCode::NoError);
             reply.add_answer(Record::from_rdata(
-                request.query().unwrap().name().clone(),
+                request.queries.first().unwrap().name().clone(),
                 1,
                 RData::A(A(std::net::Ipv4Addr::new(192, 0, 2, asked))),
             ));

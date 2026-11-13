@@ -621,10 +621,10 @@ impl DnsService {
         let reply = self
             .exchange_with_plan(query.clone(), purpose, context.clone(), plan)
             .await?;
-        if reply.response_code() != ResponseCode::NoError {
+        if reply.response_code != ResponseCode::NoError {
             return Err(format!(
                 "DNS resolution for {host} returned {}",
-                reply.response_code()
+                reply.response_code
             ));
         }
         let answered = wire::addresses(&reply)?;
@@ -713,7 +713,7 @@ impl DnsService {
     ) -> DnsFuture<'a, Message> {
         Box::pin(async move {
             wire::validate_request(&request)?;
-            let question = request.query().ok_or("DNS query has no question")?;
+            let question = request.queries.first().ok_or("DNS query has no question")?;
             if question.query_class() == hickory_proto::rr::DNSClass::IN
                 && question.query_type() == RecordType::AAAA
                 && !self.ipv6_enabled()
@@ -733,8 +733,8 @@ impl DnsService {
                 QuerySharing::Independent
             };
             let context = context.enter(purpose, &host)?;
-            let id = request.id();
-            request.set_id(rand::random());
+            let id = request.id;
+            request.metadata.id = rand::random();
             let deadline = Instant::now() + QUERY_BUDGET;
             let reply = tokio::select! {
                 biased;
@@ -743,7 +743,7 @@ impl DnsService {
             }?;
             Ok({
                 let mut reply = reply;
-                reply.set_id(id);
+                reply.metadata.id = id;
                 reply
             })
         })
@@ -1023,7 +1023,7 @@ impl DnsService {
             match result {
                 Ok(reply)
                     if !matches!(
-                        reply.response_code(),
+                        reply.response_code,
                         ResponseCode::ServFail | ResponseCode::Refused | ResponseCode::NotImp
                     ) =>
                 {
@@ -1085,7 +1085,7 @@ impl DnsService {
             None => self.select_outbound(&server.upstream, purpose, endpoint.ip(), &context)?,
         };
         let mut canonical = request.clone();
-        canonical.set_id(0);
+        canonical.metadata.id = 0;
         let key = CacheKey {
             request: wire::encode(&canonical)?,
             purpose,
@@ -1094,7 +1094,7 @@ impl DnsService {
         self.cache
             .resolve(
                 key,
-                request.id(),
+                request.id,
                 deadline,
                 sharing,
                 self.exchange_prepared(request, &server.upstream, &outbound, &endpoint, context),
@@ -1114,7 +1114,7 @@ impl DnsService {
             if !outbound.eq_ignore_ascii_case("direct") {
                 return Err("routing system DNS requires a physical DNS server snapshot".into());
             }
-            let question = request.query().ok_or("missing DNS question")?;
+            let question = request.queries.first().ok_or("missing DNS question")?;
             if question.query_class() != hickory_proto::rr::DNSClass::IN {
                 return Ok(wire::response(request, ResponseCode::NotImp));
             }

@@ -84,11 +84,11 @@ fn upstream(address: SocketAddr, transport: DnsTransport) -> (DnsUpstream, Conne
 fn full_answer(request: &Message) -> Message {
     let mut answer = wire::response(request, ResponseCode::NoError);
     answer.add_answer(Record::from_rdata(
-        request.query().unwrap().name().clone(),
+        request.queries.first().unwrap().name().clone(),
         60,
         RData::TXT(TXT::new(vec!["complete TXT answer".into()])),
     ));
-    answer.add_name_server(Record::from_rdata(
+    answer.add_authority(Record::from_rdata(
         Name::from_ascii("test.").unwrap(),
         40,
         RData::NS(NS(Name::from_ascii("ns.test.").unwrap())),
@@ -152,9 +152,9 @@ async fn dot_uses_length_framing_with_verified_tls_and_no_http_alpn() {
     .unwrap()
     .unwrap();
     let expected = full_answer(&request);
-    assert_eq!(reply.answers(), expected.answers());
-    assert_eq!(reply.name_servers(), expected.name_servers());
-    assert_eq!(reply.additionals(), expected.additionals());
+    assert_eq!(reply.answers, expected.answers);
+    assert_eq!(reply.authorities, expected.authorities);
+    assert_eq!(reply.additionals, expected.additionals);
     tokio::time::timeout(Duration::from_secs(3), server)
         .await
         .unwrap()
@@ -203,8 +203,7 @@ async fn doh_negotiates_http1_or_http2_and_applies_age_to_the_complete_message()
                 let bytes = request.into_body().collect().await.unwrap().to_bytes();
                 let query = wire::decode(&bytes).unwrap();
                 assert_eq!(
-                    query.id(),
-                    0,
+                    query.id, 0,
                     "HTTP correlates requests; DoH IDs do not fragment HTTP caches"
                 );
                 let bytes = wire::encode(&full_answer(&query)).unwrap();
@@ -230,7 +229,7 @@ async fn doh_negotiates_http1_or_http2_and_applies_age_to_the_complete_message()
             }
         });
         let mut request = wire::query("answer.test", RecordType::TXT).unwrap();
-        request.set_id(0x4242);
+        request.metadata.id = 0x4242;
         let reply = tokio::time::timeout(
             Duration::from_secs(3),
             exchange(
@@ -247,10 +246,10 @@ async fn doh_negotiates_http1_or_http2_and_applies_age_to_the_complete_message()
         .unwrap();
         let mut expected = full_answer(&request);
         wire::age_ttls(&mut expected, Duration::from_secs(15));
-        assert_eq!(reply.id(), 0x4242);
-        assert_eq!(reply.answers(), expected.answers());
-        assert_eq!(reply.name_servers(), expected.name_servers());
-        assert_eq!(reply.additionals(), expected.additionals());
+        assert_eq!(reply.id, 0x4242);
+        assert_eq!(reply.answers, expected.answers);
+        assert_eq!(reply.authorities, expected.authorities);
+        assert_eq!(reply.additionals, expected.additionals);
         // An HTTP/2 connection stays for later queries until the service
         // retires; HTTP/1.1 closed after its one exchange.
         dns.retire();
@@ -313,7 +312,7 @@ async fn dot_keeps_its_connection_for_the_next_query_until_the_server_closes_it(
         .await
         .unwrap()
         .unwrap();
-        assert_eq!(reply.answers(), full_answer(&request).answers());
+        assert_eq!(reply.answers, full_answer(&request).answers);
         assert_eq!(
             accepted.load(std::sync::atomic::Ordering::SeqCst),
             connections,
@@ -384,7 +383,7 @@ async fn doh_queries_share_one_http2_connection_until_the_service_retires() {
             .await
             .unwrap()
             .unwrap();
-            assert_eq!(reply.answers(), full_answer(&request).answers());
+            assert_eq!(reply.answers, full_answer(&request).answers);
         }
     };
     tokio::join!(query(1), query(2), query(3));
@@ -480,7 +479,7 @@ async fn doh_query(
     .await
     .unwrap_or_else(|_| panic!("{name} took more than a second"))
     .unwrap();
-    assert_eq!(reply.answers(), full_answer(&request).answers());
+    assert_eq!(reply.answers, full_answer(&request).answers);
 }
 
 /// A DoH service whose HTTP/2 connections are kept as `keep` says, and the
@@ -631,7 +630,7 @@ async fn doh_over_http1_gives_each_query_its_own_connection() {
             .await
             .unwrap()
             .unwrap();
-            assert_eq!(reply.answers(), full_answer(&request).answers());
+            assert_eq!(reply.answers, full_answer(&request).answers);
         }
     };
     query(1).await;
@@ -648,9 +647,9 @@ async fn plain_http_uses_dns_wire_post_and_rejects_wrong_content_type() {
         let (upstream, endpoint) = upstream(listener.local_addr().unwrap(), DnsTransport::Http);
         let authority = endpoint.authority();
         let mut request = wire::query("answer.test", RecordType::TXT).unwrap();
-        request.set_id(0x4242);
+        request.metadata.id = 0x4242;
         let mut http_query = request.clone();
-        http_query.set_id(0);
+        http_query.metadata.id = 0;
         let expected_body = wire::encode(&http_query).unwrap();
         let server = tokio::spawn(async move {
             let (socket, _) = listener.accept().await.unwrap();
@@ -704,10 +703,10 @@ async fn plain_http_uses_dns_wire_post_and_rejects_wrong_content_type() {
         if content_type == "application/dns-message" {
             let reply = reply.unwrap();
             let expected = full_answer(&request);
-            assert_eq!(reply.id(), request.id());
-            assert_eq!(reply.answers(), expected.answers());
-            assert_eq!(reply.name_servers(), expected.name_servers());
-            assert_eq!(reply.additionals(), expected.additionals());
+            assert_eq!(reply.id, request.id);
+            assert_eq!(reply.answers, expected.answers);
+            assert_eq!(reply.authorities, expected.authorities);
+            assert_eq!(reply.additionals, expected.additionals);
         } else {
             assert_eq!(
                 reply.unwrap_err(),
@@ -768,7 +767,7 @@ async fn udp_ignores_unrelated_same_id_questions_before_accepting_a_matching_rep
         let (length, peer) = socket.recv_from(&mut bytes).await.unwrap();
         let query = wire::decode(&bytes[..length]).unwrap();
         let mut wrong_query = wire::query("unrelated.test", RecordType::TXT).unwrap();
-        wrong_query.set_id(query.id());
+        wrong_query.metadata.id = query.id;
         socket
             .send_to(&wire::encode(&full_answer(&wrong_query)).unwrap(), peer)
             .await
@@ -793,7 +792,7 @@ async fn udp_ignores_unrelated_same_id_questions_before_accepting_a_matching_rep
     .await
     .unwrap()
     .unwrap();
-    assert_eq!(reply.answers(), full_answer(&request).answers());
+    assert_eq!(reply.answers, full_answer(&request).answers);
     server.await.unwrap();
 }
 
@@ -830,7 +829,7 @@ async fn a_lost_udp_query_goes_out_again_well_within_the_budget() {
     .await
     .expect("answered before the server's budget runs out")
     .unwrap();
-    assert_eq!(reply.answers(), full_answer(&request).answers());
+    assert_eq!(reply.answers, full_answer(&request).answers);
     assert!(
         started.elapsed() < Duration::from_secs(1),
         "{:?}",

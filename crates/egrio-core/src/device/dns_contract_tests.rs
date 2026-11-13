@@ -106,7 +106,7 @@ fn dns_response(
     answer: Ipv4Addr,
 ) -> Vec<u8> {
     let request = wire::decode(payload).unwrap();
-    let question = request.query().unwrap();
+    let question = request.queries.first().unwrap();
     observed.lock().unwrap().push((
         question.name().to_utf8().trim_end_matches('.').into(),
         question.query_type(),
@@ -560,7 +560,7 @@ async fn direct_entries_use_one_dns_source(
         .await
         .unwrap();
     let answer = wire::decode(&answer).unwrap();
-    assert_eq!(answer.response_code(), ResponseCode::NoError);
+    assert_eq!(answer.response_code, ResponseCode::NoError);
     assert_eq!(
         wire::addresses(&answer).unwrap(),
         vec![echo.address.ip()],
@@ -755,8 +755,8 @@ async fn direct_proxy_only_sources_fail_without_inventing_a_system_fallback() {
             .await
             .unwrap();
         let answer = wire::decode(&answer).unwrap();
-        assert_eq!(answer.response_code(), ResponseCode::ServFail);
-        assert!(answer.answers().is_empty());
+        assert_eq!(answer.response_code, ResponseCode::ServFail);
+        assert!(answer.answers.is_empty());
         for ingress in [Ingress::Platform, Ingress::Http, Ingress::Socks] {
             assert!(exchange(&core, ingress, DOMAIN, 443, b"must not escape the configured DNS list").await.is_err(),
                 "{ingress:?}, policy_only={policy_only}: a direct target cannot use a proxy-only DNS source");

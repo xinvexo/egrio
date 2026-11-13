@@ -779,7 +779,7 @@ mod tests {
                 let (length, peer) = dns_socket.recv_from(&mut bytes).await.unwrap();
                 let query = crate::dns::wire::decode(&bytes[..length]).unwrap();
                 let mut response = crate::dns::wire::response(&query, ResponseCode::NoError);
-                let question = query.query().unwrap();
+                let question = query.queries.first().unwrap();
                 if question.query_type() == RecordType::A {
                     response.add_answer(Record::from_rdata(
                         question.name().clone(),

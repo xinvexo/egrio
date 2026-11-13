@@ -519,14 +519,12 @@ fn answer_udp(ip: &[u8]) -> Option<Vec<u8>> {
     let payload = &ip[payload];
     let reply = if to.port() == 53 {
         let request = crate::dns::wire::decode(payload).ok()?;
-        let mut answer = hickory_proto::op::Message::new();
-        answer
-            .set_id(request.id())
-            .set_message_type(hickory_proto::op::MessageType::Response)
-            .set_recursion_desired(true)
-            .set_recursion_available(true)
-            .add_queries(request.queries().to_vec());
-        let query = request.queries().first()?;
+        let mut answer =
+            hickory_proto::op::Message::response(request.id, hickory_proto::op::OpCode::Query);
+        answer.metadata.recursion_desired = true;
+        answer.metadata.recursion_available = true;
+        answer.add_queries(request.queries.to_vec());
+        let query = request.queries.first()?;
         if query.name().to_ascii().trim_end_matches('.') == "intranet.test"
             && query.query_type() == hickory_proto::rr::RecordType::A
         {
@@ -536,7 +534,7 @@ fn answer_udp(ip: &[u8]) -> Option<Vec<u8>> {
                 hickory_proto::rr::RData::A(SERVER_IP.into()),
             ));
         } else {
-            answer.set_response_code(hickory_proto::op::ResponseCode::NXDomain);
+            answer.metadata.response_code = hickory_proto::op::ResponseCode::NXDomain;
         }
         crate::dns::wire::encode(&answer).ok()?
     } else {

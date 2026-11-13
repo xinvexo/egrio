@@ -19,7 +19,7 @@ h3-quinn = "0.0.10"
 # HashTable: rule-set domain indexes keyed into a shared text block.
 hashbrown = { version = "0.17", default-features = false, features = ["default-hasher"] }
 http = "1"
-hickory-proto = { version = "0.25", default-features = false, features = ["std"] }
+hickory-proto = { version = "0.26.1", default-features = false, features = ["std"] }
 http-body-util = "0.1"
 hyper = { version = "1", features = ["client", "http1", "http2"] }
 hyper-util = { version = "0.1", features = ["tokio"] }

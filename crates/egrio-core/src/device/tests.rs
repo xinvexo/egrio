@@ -927,7 +927,7 @@ async fn dns_aaaa_follows_the_single_global_ipv6_policy_across_updates() {
             .await
             .unwrap();
         let reply = crate::dns::wire::decode(&reply).unwrap();
-        assert_eq!(reply.answers().len(), usize::from(enabled));
+        assert_eq!(reply.answers.len(), usize::from(enabled));
         let projected =
             crate::DnsEngine::compile(&profile, egress).evaluate(&crate::DnsQueryInput {
                 query_class: 1,

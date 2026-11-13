@@ -41,7 +41,7 @@ impl DnsFixture {
                 // hold back the A answer.
                 let socket = socket.clone();
                 tokio::spawn(async move {
-                    let query = request.query().unwrap();
+                    let query = request.queries.first().unwrap();
                     let mut response = wire::response(&request, ResponseCode::NoError);
                     match query.query_type() {
                         RecordType::A => {

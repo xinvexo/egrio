@@ -31,7 +31,8 @@ from [.NET `Path.GetTempPath()`](https://learn.microsoft.com/en-us/dotnet/api/sy
 ## SS2022 独立互通
 
 `ss2022-peer/` 固定使用 SagerNet `sing-shadowsocks` v0.2.9，作为与 Rust codec
-无关的 Go 对端。需要 Go 1.22 及以上；它只监听和连接本机回环地址，不改变系统代理、
+无关的 Go 对端。需要 Go 1.25.0 及以上，与 `golang.org/x/crypto` v0.52.0 的
+[模块要求](https://go.googlesource.com/crypto/+/refs/tags/v0.52.0/go.mod)一致；它只监听和连接本机回环地址，不改变系统代理、
 路由或 DNS。先构建对端，再显式运行默认忽略的互通测试：
 
 ```bash

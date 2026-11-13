@@ -55,7 +55,7 @@ impl Resolver {
         self.cache
             .resolve(
                 key,
-                request.id(),
+                request.id,
                 Instant::now() + DNS_QUERY_BUDGET,
                 QuerySharing::Shared,
                 query_servers(egress, request),
@@ -263,7 +263,7 @@ async fn query_servers(egress: &EgressRuntime, request: Message) -> Result<Messa
         tokio::select! {
             result = pending.next(), if !pending.is_empty() => {
                 match result.expect("pending DNS query") {
-                    Ok(answer) if answer.response_code() == ResponseCode::ServFail => server_failure = Some(answer),
+                    Ok(answer) if answer.response_code == ResponseCode::ServFail => server_failure = Some(answer),
                     Ok(answer) => return Ok(answer),
                     Err(error) => if errors.len() < MAX_REPORTED_ERRORS { errors.push(error); },
                 }
@@ -329,7 +329,7 @@ async fn query_server(
                 }
             }
         };
-        if response.truncated() {
+        if response.truncation {
             let (stream, _) = egress
                 .connect_tcp_endpoint(server, deadline.saturating_duration_since(Instant::now()))
                 .await
@@ -355,7 +355,7 @@ fn word(payload: &[u8], offset: usize) -> Result<u16, String> {
 #[cfg(test)]
 fn build_query(host: &str, qtype: u16) -> Result<(u16, Vec<u8>), String> {
     let request = wire::query(host, RecordType::from(qtype))?;
-    Ok((request.id(), wire::encode(&request)?))
+    Ok((request.id, wire::encode(&request)?))
 }
 #[cfg(test)]
 struct TestAnswer {
@@ -371,20 +371,20 @@ enum WireAnswer {
 #[cfg(test)]
 fn parse_response(payload: &[u8], id: u16, host: &str, qtype: u16) -> Result<WireAnswer, String> {
     let mut request = wire::query(host, RecordType::from(qtype))?;
-    request.set_id(id);
+    request.metadata.id = id;
     let response = wire::decode(payload)?;
     wire::validate_response(&request, &response)?;
-    if response.truncated() {
+    if response.truncation {
         Ok(WireAnswer::Truncated)
     } else {
         Ok(WireAnswer::Complete(TestAnswer {
-            addresses: if response.response_code() == ResponseCode::NoError {
+            addresses: if response.response_code == ResponseCode::NoError {
                 wire::addresses(&response)?
             } else {
                 Vec::new()
             },
             ttl: wire::positive_ttl(&response).unwrap_or(Duration::ZERO),
-            response_code: response.response_code(),
+            response_code: response.response_code,
         }))
     }
 }

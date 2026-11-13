@@ -667,7 +667,7 @@ async fn spawn_loopback_resolver() -> Result<(SocketAddr, tokio::task::JoinHandl
                 continue;
             };
             let mut answer = crate::dns::wire::response(&request, ResponseCode::NoError);
-            for query in request.queries() {
+            for query in request.queries {
                 if query.query_type() == RecordType::A {
                     answer.add_answer(Record::from_rdata(
                         query.name().clone(),

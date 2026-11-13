@@ -111,10 +111,10 @@ impl UpstreamQuery {
         let mut encoded = crate::dns::wire::encode(&reply)?;
         if transport == DnsQueryTransport::Udp && encoded.len() > usize::from(request.max_payload())
         {
-            reply.take_answers();
-            reply.take_name_servers();
-            reply.take_additionals();
-            reply.set_truncated(true);
+            reply.answers.clear();
+            reply.authorities.clear();
+            reply.additionals.clear();
+            reply.metadata.truncation = true;
             encoded = crate::dns::wire::encode(&reply)?;
         }
         Ok(encoded)
@@ -138,11 +138,12 @@ pub(crate) fn plan_dns_query(
                 return Err(error);
             }
             let opcode = (payload[2] >> 3) & 0x0f;
-            let mut request = hickory_proto::op::Message::new();
-            request
-                .set_id(u16::from_be_bytes([payload[0], payload[1]]))
-                .set_op_code(hickory_proto::op::OpCode::from_u8(opcode))
-                .set_recursion_desired(payload[2] & 1 != 0);
+            let mut request = hickory_proto::op::Message::new(
+                u16::from_be_bytes([payload[0], payload[1]]),
+                hickory_proto::op::MessageType::Query,
+                hickory_proto::op::OpCode::from_u8(opcode),
+            );
+            request.metadata.recursion_desired = payload[2] & 1 != 0;
             let code = if opcode == 0 {
                 hickory_proto::op::ResponseCode::FormErr
             } else {
@@ -289,7 +290,7 @@ fn fake_ip_answers(
 fn parse_dns_query(payload: &[u8]) -> Result<DnsQuestion, String> {
     let request = crate::dns::wire::decode(payload)?;
     crate::dns::wire::validate_request(&request)?;
-    let question = request.query().expect("validated DNS question");
+    let question = request.queries.first().expect("validated DNS question");
     let domain = normalize_domain(&question.name().to_utf8());
     let qtype = u16::from(question.query_type());
     let qclass = u16::from(question.query_class());
@@ -333,10 +334,11 @@ fn encode_dns_response(
         RData, Record,
     };
     let mut message = crate::dns::wire::response(&question.request, rcode.into());
-    message.set_truncated(truncated);
+    message.metadata.truncation = truncated;
     let name = question
         .request
-        .query()
+        .queries
+        .first()
         .expect("validated DNS question")
         .name();
     for answer in answers {
@@ -348,7 +350,7 @@ fn encode_dns_response(
             _ => continue,
         };
         let mut record = Record::from_rdata(name.clone(), answer.ttl, data);
-        record.set_dns_class(hickory_proto::rr::DNSClass::from(answer.qclass));
+        record.dns_class = hickory_proto::rr::DNSClass::from(answer.qclass);
         message.add_answer(record);
     }
     crate::dns::wire::encode(&message).expect("bounded synthetic DNS response")
@@ -378,11 +380,10 @@ mod tests {
     async fn unsupported_opcode_and_malformed_question_receive_protocol_errors() {
         use hickory_proto::op::{Message, OpCode, ResponseCode};
         let runtime = NativeCoreRuntime::compile(&proxy_profile());
-        let mut empty = Message::new();
-        empty.set_id(0x1234);
+        let empty = Message::new(0x1234, hickory_proto::op::MessageType::Query, OpCode::Query);
         let mut unsupported =
             crate::dns::wire::query("status.test", hickory_proto::rr::RecordType::A).unwrap();
-        unsupported.set_op_code(OpCode::Status);
+        unsupported.metadata.op_code = OpCode::Status;
         for (query, code) in [
             (empty, ResponseCode::FormErr),
             (unsupported, ResponseCode::NotImp),
@@ -396,9 +397,9 @@ mod tests {
             .await
             .unwrap();
             let response = crate::dns::wire::decode(&response).unwrap();
-            assert_eq!(response.response_code(), code);
-            assert_eq!(response.id(), query.id());
-            assert_eq!(response.op_code(), query.op_code());
+            assert_eq!(response.response_code, code);
+            assert_eq!(response.id, query.id);
+            assert_eq!(response.op_code, query.op_code);
         }
     }
 

@@ -158,7 +158,7 @@ impl<K: Eq + Hash + Clone + Debug> DnsCache<K> {
                             &mut message,
                             now.saturating_duration_since(answer.inserted),
                         );
-                        message.set_id(request_id);
+                        message.metadata.id = request_id;
                         return Ok(message);
                     }
                 }
@@ -188,7 +188,7 @@ impl<K: Eq + Hash + Clone + Debug> DnsCache<K> {
                     .await;
                     guard.finish(result.clone(), &self.clears);
                     return result.map(|mut message| {
-                        message.set_id(request_id);
+                        message.metadata.id = request_id;
                         message
                     });
                 }
@@ -199,7 +199,7 @@ impl<K: Eq + Hash + Clone + Debug> DnsCache<K> {
                     )
                     .await
                     .map(|mut message| {
-                        message.set_id(request_id);
+                        message.metadata.id = request_id;
                         message
                     });
                 }
@@ -226,7 +226,7 @@ impl<K: Eq + Hash + Clone + Debug> DnsCache<K> {
                             &mut message,
                             Instant::now().saturating_duration_since(received),
                         );
-                        message.set_id(request_id);
+                        message.metadata.id = request_id;
                         message
                     })
                 }
@@ -316,7 +316,7 @@ mod tests {
         let request = wire::query("cache.test", RecordType::TXT).unwrap();
         let mut answer = wire::response(&request, ResponseCode::NoError);
         answer.add_answer(Record::from_rdata(
-            request.query().unwrap().name().clone(),
+            request.queries.first().unwrap().name().clone(),
             ttl,
             RData::TXT(TXT::new(vec!["retained record data".into()])),
         ));
@@ -329,7 +329,7 @@ mod tests {
         let request = wire::query("v4only.test", RecordType::AAAA).unwrap();
         let mut answer = wire::response(&request, ResponseCode::NoError);
         if let Some(ttl) = soa {
-            answer.add_name_server(Record::from_rdata(
+            answer.add_authority(Record::from_rdata(
                 hickory_proto::rr::Name::from_ascii("test.").unwrap(),
                 ttl,
                 RData::SOA(hickory_proto::rr::rdata::SOA::new(
@@ -364,12 +364,12 @@ mod tests {
             )
         };
         let first = ask("with soa", Some(300)).await.unwrap();
-        assert!(first.answers().is_empty());
+        assert!(first.answers.is_empty());
         tokio::time::advance(Duration::from_secs(100)).await;
         let again = ask("with soa", Some(300)).await.unwrap();
         assert_eq!(calls.load(Ordering::SeqCst), 1, "answered from the cache");
-        assert!(again.answers().is_empty());
-        assert_eq!(again.name_servers()[0].ttl(), 200, "its SOA aged");
+        assert!(again.answers.is_empty());
+        assert_eq!(again.authorities[0].ttl, 200, "its SOA aged");
         tokio::time::advance(Duration::from_secs(201)).await;
         ask("with soa", Some(300)).await.unwrap();
         assert_eq!(calls.load(Ordering::SeqCst), 2, "asked again past the SOA");
@@ -412,9 +412,9 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(calls.load(Ordering::SeqCst), 1);
-        assert_eq!(hit.id(), 2);
-        assert_eq!(hit.answers()[0].data(), fetched.answers()[0].data());
-        assert_eq!(hit.answers()[0].ttl(), 58);
+        assert_eq!(hit.id, 2);
+        assert_eq!(hit.answers[0].data, fetched.answers[0].data);
+        assert_eq!(hit.answers[0].ttl, 58);
         tokio::time::advance(Duration::from_secs(59)).await;
         cache
             .resolve(
@@ -635,7 +635,7 @@ mod tests {
             .unwrap()
             .unwrap()
             .unwrap();
-        assert_eq!(answer.id(), 2);
+        assert_eq!(answer.id, 2);
     }
 
     #[tokio::test]
@@ -673,14 +673,14 @@ mod tests {
         .await
         .unwrap()
         .unwrap();
-        assert_eq!(independent.id(), 2);
-        assert_eq!(independent.answers()[0].ttl(), 20);
+        assert_eq!(independent.id, 2);
+        assert_eq!(independent.answers[0].ttl, 20);
         assert!(
             !owner.is_finished(),
             "independent query must not cancel or replace its peer"
         );
         finish.send(()).unwrap();
-        assert_eq!(owner.await.unwrap().unwrap().answers()[0].ttl(), 60);
+        assert_eq!(owner.await.unwrap().unwrap().answers[0].ttl, 60);
         let cached = cache
             .resolve(
                 1,
@@ -691,8 +691,8 @@ mod tests {
             )
             .await
             .unwrap();
-        assert_eq!(cached.id(), 3);
-        assert!(cached.answers()[0].ttl() >= 59);
+        assert_eq!(cached.id, 3);
+        assert!(cached.answers[0].ttl >= 59);
     }
 
     #[tokio::test(start_paused = true)]
@@ -757,7 +757,7 @@ mod tests {
                     )
                     .await
                     .unwrap();
-                assert_eq!(answer.response_code(), rcode);
+                assert_eq!(answer.response_code, rcode);
             }
             assert_eq!(calls.load(Ordering::SeqCst), 2);
         }
