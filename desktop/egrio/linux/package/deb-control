@@ -1,0 +1,12 @@
+Package: egrio
+Version: @VERSION@
+Architecture: amd64
+Maintainer: Egrio <xinvexo@users.noreply.github.com>
+Installed-Size: @INSTALLED_SIZE@
+Depends: libc6 (>= 2.39), libgtk-4-1 (>= 4.14), libadwaita-1-0 (>= 1.5)
+Section: net
+Priority: optional
+Description: Desktop proxy client
+ Egrio runs Clash profiles and subscriptions through its own proxy core and
+ captures traffic as the system proxy or in TUN mode, which the egrio-service
+ systemd unit sets up as root.

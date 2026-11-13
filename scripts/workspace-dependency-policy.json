@@ -1,0 +1,41 @@
+{
+  "workspaceDependencies": {
+    "egrio": ["egrio-daemon", "egrio-desktop", "egrio-ui"],
+    "egrio-desktop": ["egrio-core", "egrio-daemon", "egrio-platform", "egrio-platform-linux", "egrio-platform-macos", "egrio-platform-windows", "egrio-runtime", "egrio-sdk"],
+    "egrio-core": [],
+    "egrio-ui": ["egrio-core", "egrio-desktop", "egrio-platform"],
+    "xtask": [],
+    "egrio-runtime": ["egrio-core"],
+    "egrio-service": ["egrio-core", "egrio-platform", "egrio-platform-linux", "egrio-platform-macos", "egrio-platform-windows", "egrio-runtime"],
+    "egrio-sdk": ["egrio-core", "egrio-runtime", "egrio-service", "egrio-platform-linux", "egrio-platform-macos", "egrio-platform-windows"],
+    "egrio-daemon": ["egrio-core", "egrio-runtime", "egrio-sdk", "egrio-platform", "egrio-platform-linux", "egrio-platform-macos", "egrio-platform-windows"],
+    "egrio-platform": ["egrio-core"],
+    "egrio-platform-linux": ["egrio-core", "egrio-platform", "egrio-runtime"],
+    "egrio-platform-macos": ["egrio-core", "egrio-platform", "egrio-runtime"],
+    "egrio-platform-windows": ["egrio-core", "egrio-platform", "egrio-runtime"]
+  },
+  "daemonServerAssembly": {
+    "package": "egrio-daemon",
+    "features": ["server"],
+    "excludedPackages": [
+      "egrio-runtime",
+      "egrio-platform-linux",
+      "egrio-platform-macos",
+      "egrio-platform-windows"
+    ]
+  },
+  "sdkAssembly": {
+    "package": "egrio-sdk",
+    "defaultFeatures": [],
+    "platformFeatures": {
+      "platform-linux": "egrio-platform-linux",
+      "platform-macos": "egrio-platform-macos",
+      "platform-windows": "egrio-platform-windows"
+    },
+    "featureExtras": {
+      "platform-linux": ["egrio-service"],
+      "platform-macos": ["egrio-service"],
+      "platform-windows": ["egrio-service"]
+    }
+  }
+}

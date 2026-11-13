@@ -1,0 +1,62 @@
+[package]
+name = "egrio-desktop"
+version.workspace = true
+description = "Egrio's desktop product backend: profiles, settings, the Runtime host and telemetry history"
+edition.workspace = true
+license.workspace = true
+license-file.workspace = true
+
+# The memory instrument reads the composition behind that feature, so it
+# only builds with it.
+[[example]]
+name = "app_memory"
+required-features = ["bench-internals"]
+
+[[example]]
+name = "subscription_scale"
+required-features = ["bench-internals"]
+
+[features]
+# What the memory instrument needs of the composition the Runtime start
+# does; nothing a product build turns on.
+bench-internals = []
+
+[dependencies]
+egrio-core = { workspace = true }
+egrio-daemon = { workspace = true }
+egrio-platform = { workspace = true }
+egrio-platform-linux = { workspace = true }
+egrio-platform-macos = { workspace = true }
+egrio-platform-windows = { workspace = true }
+egrio-runtime = { workspace = true }
+auto-launch = "0.6"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+directories = "6.0.0"
+log = { version = "0.4", features = ["std"] }
+reqwest = { version = "0.13.4", default-features = false, features = ["json", "rustls", "system-proxy", "charset", "http2"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_yaml = { workspace = true }
+sha2 = "0.10"
+sys-locale = "0.3"
+thiserror = { workspace = true }
+time = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
+uuid = { workspace = true }
+
+# The Runtime owner's lock (`flock`), which macOS and Linux both take.
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+egrio-sdk = { workspace = true, features = ["platform-macos"] }
+# The app's own login item (SMAppService.mainAppService).
+objc2 = "0.6.5"
+objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "NSError", "NSString"] }
+objc2-service-management = { version = "0.3.2", default-features = false, features = ["std", "SMAppService", "objc2", "objc2-foundation"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+egrio-sdk = { workspace = true, features = ["platform-linux"] }
+
+[target.'cfg(windows)'.dependencies]
+egrio-sdk = { workspace = true, features = ["platform-windows"] }

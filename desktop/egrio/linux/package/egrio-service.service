@@ -1,0 +1,21 @@
+[Unit]
+Description=Egrio TUN mode helper
+After=systemd-resolved.service
+
+[Service]
+Type=notify
+ExecStart=/usr/bin/egrio-service run-linux-service
+Restart=always
+RestartSec=1
+RuntimeDirectory=egrio
+RuntimeDirectoryMode=0755
+StateDirectory=egrio
+StateDirectoryMode=0700
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

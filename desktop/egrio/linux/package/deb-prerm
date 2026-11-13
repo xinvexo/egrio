@@ -1,0 +1,7 @@
+#!/bin/sh
+# Stops the helper before its files go; refused, and the removal with it,
+# while TUN mode still holds resources the helper must restore first.
+set -e
+if [ "$1" = remove ] && [ -d /run/systemd/system ]; then
+    /usr/bin/egrio-service uninstall-linux-service
+fi

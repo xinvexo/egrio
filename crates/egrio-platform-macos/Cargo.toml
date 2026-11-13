@@ -1,0 +1,40 @@
+[package]
+name = "egrio-platform-macos"
+version.workspace = true
+edition.workspace = true
+description = "macOS platform adapters for Egrio: the TUN, egress binding, system proxy and process attribution"
+license.workspace = true
+license-file.workspace = true
+
+[dependencies]
+log = "0.4"
+base64 = { workspace = true }
+egrio-core = { workspace = true }
+egrio-platform = { workspace = true }
+egrio-runtime = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true, features = ["io-util", "macros", "net", "rt-multi-thread", "sync", "time"] }
+uuid = { workspace = true }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+core-foundation = "0.9"
+objc2 = "0.6.5"
+objc2-app-kit = { version = "0.3.2", default-features = false, features = [
+  "std", "NSBitmapImageRep", "NSGraphics", "NSGraphicsContext", "NSImage", "NSImageRep",
+  "NSWorkspace", "objc2-core-foundation",
+] }
+objc2-foundation = { version = "0.3.2", default-features = false, features = [
+  "std", "NSArray", "NSBundle", "NSData", "NSDictionary", "NSFileManager", "NSGeometry",
+  "NSObject", "NSProcessInfo", "NSString", "NSURL", "objc2-core-foundation",
+] }
+system-configuration = "0.7"
+
+[build-dependencies]
+cc = "1"
+
+[dev-dependencies]
+tokio-util = { workspace = true }

@@ -1,0 +1,25 @@
+{
+  "id": "validation-http-proxy",
+  "name": "validation-http-proxy",
+  "traffic_policy_mode": "rule",
+  "global_outbound": null,
+  "proxies": [
+    {
+      "id": "validation-http-upstream",
+      "name": "ValidationHttpUpstream",
+      "protocol": "http",
+      "server": "127.0.0.1",
+      "port": 18080,
+      "options": {}
+    }
+  ],
+  "groups": [],
+  "rules": [
+    {
+      "kind": "match",
+      "payload": null,
+      "outbound": "ValidationHttpUpstream",
+      "no_resolve": false
+    }
+  ]
+}

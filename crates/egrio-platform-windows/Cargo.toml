@@ -1,0 +1,24 @@
+[package]
+name = "egrio-platform-windows"
+version.workspace = true
+edition.workspace = true
+description = "Windows platform capture adapter for Egrio"
+license.workspace = true
+license-file.workspace = true
+
+[dependencies]
+egrio-core = { workspace = true }
+egrio-platform = { workspace = true }
+egrio-runtime = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true, features = ["net", "rt", "rt-multi-thread", "sync", "time"] }
+
+[target.'cfg(windows)'.dependencies]
+base64 = { workspace = true }
+libloading = "0.8.9"
+log = "0.4"
+png = "0.18"
+wintun = "0.5.1"
+windows-sys = { workspace = true, features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_Media", "Win32_Networking_WinInet", "Win32_Networking_WinSock", "Win32_NetworkManagement_IpHelper", "Win32_NetworkManagement_Ndis", "Win32_NetworkManagement_WindowsFilteringPlatform", "Win32_System_Com", "Win32_System_IO", "Win32_System_Registry", "Win32_System_Rpc", "Win32_System_Threading", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
+winreg = { workspace = true }

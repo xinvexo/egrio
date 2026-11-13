@@ -1,0 +1,25 @@
+{
+  "id": "validation-socks5-proxy",
+  "name": "validation-socks5-proxy",
+  "traffic_policy_mode": "rule",
+  "global_outbound": null,
+  "proxies": [
+    {
+      "id": "validation-socks5-upstream",
+      "name": "ValidationSocks5Upstream",
+      "protocol": "socks5",
+      "server": "127.0.0.1",
+      "port": 11080,
+      "options": {}
+    }
+  ],
+  "groups": [],
+  "rules": [
+    {
+      "kind": "match",
+      "payload": null,
+      "outbound": "ValidationSocks5Upstream",
+      "no_resolve": false
+    }
+  ]
+}

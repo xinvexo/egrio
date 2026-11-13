@@ -1,0 +1,9 @@
+[alias]
+# The repository's tasks: `cargo xtask package` (see xtask/src/main.rs).
+xtask = "run --quiet --package xtask --"
+
+# Windows builds link the C runtime statically, so the app and the service
+# start on a machine without the Visual C++ Redistributable, which the
+# Windows App SDK otherwise asks unpackaged apps to bring along.
+[target.'cfg(all(windows, target_env = "msvc"))']
+rustflags = ["-C", "target-feature=+crt-static"]

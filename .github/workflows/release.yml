@@ -1,0 +1,156 @@
+# Builds the desktop app's packages on each platform and publishes them as a
+# GitHub release with their SHA-256 checksums (docs/runbooks/release.md).
+# Pushing the tag v<version>, the workspace's version, publishes the release
+# the app's update check finds; running the workflow by hand builds the
+# packages as the run's artifacts only.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  # Where the release goes and where the app looks for releases
+  # (desktop/egrio-desktop/src/updates.rs).
+  EGRIO_RELEASES_REPOSITORY: ${{ vars.RELEASES_REPOSITORY || github.repository }}
+
+jobs:
+  version:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: version
+        name: Version
+        run: |
+          version=$(sed -n '/^\[workspace.package\]/,/^\[/s/^version = "\(.*\)"$/\1/p' Cargo.toml)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if [ "$GITHUB_REF_TYPE" = tag ] && [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "::error::the tag $GITHUB_REF_NAME is not v$version, the workspace's version"
+            exit 1
+          fi
+
+  macos:
+    needs: version
+    strategy:
+      matrix:
+        target: [aarch64-apple-darwin, x86_64-apple-darwin]
+    # Apple silicon builds both; the Intel package is cross-compiled.
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v7
+      - name: Rust
+        run: rustup toolchain install && rustup target add ${{ matrix.target }}
+      - name: Rosetta
+        # Packaging runs the service it built once, here an Intel binary.
+        if: matrix.target == 'x86_64-apple-darwin'
+        run: sudo softwareupdate --install-rosetta --agree-to-license
+      - name: Signing
+        env:
+          CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: |
+          if [ -z "$CERTIFICATE" ]; then
+            if [ "$GITHUB_REF_TYPE" = tag ]; then
+              echo "::error::a release needs the MACOS_CERTIFICATE secret and the notarization secrets"
+              exit 1
+            fi
+            echo "::warning::no MACOS_CERTIFICATE secret: the packages are signed ad hoc and not notarized"
+            { echo "PACKAGE_OPTION=--identity"; echo "PACKAGE_VALUE=-"; } >> "$GITHUB_ENV"
+            exit 0
+          fi
+          # A keychain of the run's own, the default one so that codesign
+          # finds the certificate and notarytool the profile.
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          password=$(openssl rand -hex 24)
+          security create-keychain -p "$password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$password" "$keychain"
+          printf '%s' "$CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
+          security import "$RUNNER_TEMP/certificate.p12" -k "$keychain" \
+            -P "$CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          rm "$RUNNER_TEMP/certificate.p12"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$password" "$keychain"
+          security list-keychains -d user -s "$keychain"
+          security default-keychain -d user -s "$keychain"
+          xcrun notarytool store-credentials egrio-notary --apple-id "$APPLE_ID" \
+            --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD"
+          { echo "PACKAGE_OPTION=--notarize"; echo "PACKAGE_VALUE=egrio-notary"; } >> "$GITHUB_ENV"
+      - name: Package
+        run: cargo xtask package --target ${{ matrix.target }} "$PACKAGE_OPTION" "$PACKAGE_VALUE"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: macos-${{ matrix.target }}
+          path: target/${{ matrix.target }}/release/bundle/dmg/Egrio_*.dmg
+          if-no-files-found: error
+
+  windows:
+    needs: version
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v7
+      - name: Rust
+        run: rustup toolchain install
+      - name: Package
+        run: cargo xtask package
+      - uses: actions/upload-artifact@v7
+        with:
+          name: windows
+          path: target/x86_64-pc-windows-msvc/release/bundle/nsis/Egrio_*_x64-setup.exe
+          if-no-files-found: error
+
+  linux:
+    needs: version
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: GTK
+        run: sudo apt-get update && sudo apt-get install -y libgtk-4-dev libadwaita-1-dev binutils
+      - name: Rust
+        run: rustup toolchain install
+      - name: Package
+        run: cargo xtask package
+      - uses: actions/upload-artifact@v7
+        with:
+          name: linux
+          path: target/release/bundle/deb/egrio_*_amd64.deb
+          if-no-files-found: error
+
+  release:
+    needs: [version, macos, windows, linux]
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: packages
+          merge-multiple: true
+      - name: Checksums
+        working-directory: packages
+        run: sha256sum -- * > SHA256SUMS && cat SHA256SUMS
+      - name: Publish
+        env:
+          # A token for another repository when the release goes there.
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN || github.token }}
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          options=(--repo "$EGRIO_RELEASES_REPOSITORY" --title "Egrio $VERSION")
+          # The app's update check passes over prereleases.
+          case "$VERSION" in *-*) options+=(--prerelease) ;; esac
+          if [ "$EGRIO_RELEASES_REPOSITORY" = "$GITHUB_REPOSITORY" ]; then
+            options+=(--verify-tag --generate-notes)
+          else
+            options+=(--notes "Egrio $VERSION")
+          fi
+          gh release create "$GITHUB_REF_NAME" packages/* "${options[@]}"

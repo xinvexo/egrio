@@ -1,0 +1,29 @@
+[package]
+name = "egrio-sdk"
+version.workspace = true
+edition.workspace = true
+description = "Recommended in-process assembly facade for Egrio"
+license.workspace = true
+license-file.workspace = true
+
+[dependencies]
+egrio-core = { workspace = true }
+egrio-runtime = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+egrio-platform-windows = { workspace = true, optional = true }
+egrio-service = { workspace = true, optional = true }
+egrio-platform-macos = { workspace = true, optional = true }
+egrio-platform-linux = { workspace = true, optional = true }
+tokio = { workspace = true, features = ["net", "rt", "rt-multi-thread", "sync", "time"] }
+tokio-util = { workspace = true }
+
+[features]
+default = []
+platform-windows = ["dep:egrio-platform-windows", "dep:egrio-service"]
+platform-macos = ["dep:egrio-platform-macos", "dep:egrio-service"]
+platform-linux = ["dep:egrio-platform-linux", "dep:egrio-service"]
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt"] }
+uuid = { workspace = true }

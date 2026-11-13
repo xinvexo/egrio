@@ -1,0 +1,15 @@
+[package]
+name = "egrio-platform"
+version.workspace = true
+edition.workspace = true
+description = "Shared platform contracts for Egrio: capture layers, system proxy, process display and ping sockets"
+license.workspace = true
+license-file.workspace = true
+
+[dependencies]
+egrio-core = { workspace = true }
+serde = { workspace = true }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+

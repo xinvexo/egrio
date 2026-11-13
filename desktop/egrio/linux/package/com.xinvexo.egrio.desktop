@@ -1,0 +1,14 @@
+# Named after the app's GApplication ID, which GTK gives its windows, so
+# GNOME Shell shows them under this entry (Desktop Entry Specification 1.5).
+[Desktop Entry]
+Type=Application
+Version=1.5
+Name=Egrio
+Comment=Desktop proxy client
+Comment[zh_CN]=桌面代理客户端
+Exec=egrio
+Icon=com.xinvexo.egrio
+Terminal=false
+Categories=Network;
+StartupNotify=true
+SingleMainWindow=true

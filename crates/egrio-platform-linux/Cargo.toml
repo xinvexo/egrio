@@ -1,0 +1,20 @@
+[package]
+name = "egrio-platform-linux"
+version.workspace = true
+edition.workspace = true
+description = "Linux platform capture adapter for Egrio"
+license.workspace = true
+license-file.workspace = true
+
+[dependencies]
+egrio-core = { workspace = true }
+egrio-platform = { workspace = true }
+egrio-runtime = { workspace = true }
+log = "0.4"
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true, features = ["net", "rt", "sync", "time", "macros"] }
+uuid = { workspace = true }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+libc = "0.2"

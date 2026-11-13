@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- The symbolic icons Egrio carries for meanings Adwaita has no icon for;
+     build.rs compiles them into the Linux executable. -->
+<gresources>
+  <gresource prefix="/com/xinvexo/egrio">
+    <file>icons/scalable/actions/egrio-activity-symbolic.svg</file>
+    <file>icons/scalable/actions/egrio-arrow-down-symbolic.svg</file>
+    <file>icons/scalable/actions/egrio-arrow-up-symbolic.svg</file>
+    <file>icons/scalable/actions/egrio-bell-symbolic.svg</file>
+    <file>icons/scalable/actions/egrio-bolt-symbolic.svg</file>
+    <file>icons/scalable/actions/egrio-globe-symbolic.svg</file>
+    <file>icons/scalable/actions/egrio-route-symbolic.svg</file>
+    <file>icons/scalable/actions/egrio-wrench-symbolic.svg</file>
+  </gresource>
+</gresources>

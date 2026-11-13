@@ -1,0 +1,3 @@
+# Files that end up in Linux packages as they are: a maintainer script or unit
+# with a carriage return breaks on the target system.
+desktop/egrio/linux/package/** text eol=lf

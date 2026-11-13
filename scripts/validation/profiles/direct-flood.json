@@ -1,0 +1,9 @@
+{
+  "id": "r5-direct-flood",
+  "name": "r5-direct-flood",
+  "traffic_policy_mode": "direct",
+  "global_outbound": null,
+  "proxies": [],
+  "groups": [],
+  "rules": []
+}

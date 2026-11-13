@@ -1,0 +1,54 @@
+[workspace]
+members = [
+    "crates/egrio-core",
+    "crates/egrio-runtime",
+    "crates/egrio-sdk",
+    "crates/egrio-service",
+    "crates/egrio-platform",
+    "crates/egrio-platform-macos",
+    "crates/egrio-platform-windows",
+    "crates/egrio-platform-linux",
+    "crates/egrio-daemon",
+    "desktop/egrio-desktop",
+    "desktop/egrio-ui",
+    "desktop/egrio",
+    "xtask",
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-only"
+# Include the full text when a workspace member is packaged independently.
+license-file = "LICENSE"
+
+[workspace.dependencies]
+egrio-core = { path = "crates/egrio-core" }
+egrio-runtime = { path = "crates/egrio-runtime" }
+egrio-sdk = { path = "crates/egrio-sdk" }
+egrio-service = { path = "crates/egrio-service" }
+egrio-platform = { path = "crates/egrio-platform" }
+egrio-platform-macos = { path = "crates/egrio-platform-macos" }
+egrio-platform-windows = { path = "crates/egrio-platform-windows" }
+egrio-platform-linux = { path = "crates/egrio-platform-linux" }
+egrio-daemon = { path = "crates/egrio-daemon" }
+egrio-desktop = { path = "desktop/egrio-desktop" }
+egrio-ui = { path = "desktop/egrio-ui" }
+
+arc-swap = "1.7.1"
+base64 = "0.22"
+criterion = "0.7"
+regex = "1"
+# `rc` is for serializing the `Arc<str>` the session ledger shares with the
+# rows a host polls; nothing deserializes into one.
+serde = { version = "1", features = ["derive", "rc"] }
+serde_json = "1"
+serde_yaml = "0.9.34"
+thiserror = "2.0.18"
+time = { version = "0.3.51", features = ["serde"] }
+tokio = "1.52.3"
+tokio-util = { version = "0.7.18", default-features = false }
+uuid = { version = "1.23.4", features = ["v4", "serde"] }
+windows-sys = "0.61.2"
+winreg = "0.55.0"

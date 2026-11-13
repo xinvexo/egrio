@@ -1,0 +1,20 @@
+[package]
+name = "egrio-runtime"
+version.workspace = true
+edition.workspace = true
+description = "Runtime lifecycle and platform capability contracts for Egrio"
+license.workspace = true
+license-file.workspace = true
+
+[dependencies]
+egrio-core = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = "0.10"
+tokio = { workspace = true, features = ["rt", "sync", "time"] }
+tokio-util = { workspace = true }
+uuid = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
+tokio = { workspace = true, features = ["macros", "net", "rt"] }

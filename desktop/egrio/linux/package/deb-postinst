@@ -1,0 +1,7 @@
+#!/bin/sh
+# Starts the package's TUN mode helper (restarting it on an upgrade) in place
+# of one the app installed itself (debian-policy, maintainer scripts).
+set -e
+if [ "$1" = configure ] && [ -d /run/systemd/system ]; then
+    /usr/bin/egrio-service install-linux-package
+fi

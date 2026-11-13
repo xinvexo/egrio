@@ -1,0 +1,21 @@
+{
+  "http": [
+    { "name": "baidu", "url": "https://www.baidu.com/robots.txt", "route": "direct" },
+    { "name": "bilibili", "url": "https://www.bilibili.com/robots.txt", "route": "direct" },
+    { "name": "taobao", "url": "https://www.taobao.com/robots.txt", "route": "direct" },
+    { "name": "jd", "url": "https://www.jd.com/robots.txt", "route": "direct" },
+    { "name": "163", "url": "https://www.163.com/robots.txt", "route": "direct" },
+    { "name": "tuna", "url": "https://mirrors.tuna.tsinghua.edu.cn/robots.txt", "route": "direct" },
+    { "name": "google", "url": "https://www.google.com/generate_204", "route": "proxy" },
+    { "name": "gstatic", "url": "https://www.gstatic.com/generate_204", "route": "proxy" },
+    { "name": "cloudflare", "url": "https://www.cloudflare.com/cdn-cgi/trace", "route": "proxy" },
+    { "name": "github", "url": "https://github.com/robots.txt", "route": "proxy" },
+    { "name": "wikipedia", "url": "https://en.wikipedia.org/robots.txt", "route": "proxy" },
+    { "name": "youtube", "url": "https://www.youtube.com/robots.txt", "route": "proxy" }
+  ],
+  "stun": [
+    { "name": "miwifi", "host": "stun.miwifi.com", "port": 3478, "route": "direct" },
+    { "name": "google", "host": "stun.l.google.com", "port": 19302, "route": "proxy" },
+    { "name": "cloudflare", "host": "stun.cloudflare.com", "port": 3478, "route": "proxy" }
+  ]
+}

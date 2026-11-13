@@ -1,0 +1,17 @@
+[package]
+name = "xtask"
+version.workspace = true
+description = "The repository's tasks, run as cargo xtask: the checks, the desktop app's package and icons, and the DLLs the Windows builds load"
+edition.workspace = true
+license.workspace = true
+license-file.workspace = true
+publish = false
+
+[dependencies]
+regex = { workspace = true }
+# Decode, resize and composite the PNG icon masters with premultiplied alpha.
+tiny-skia = "0.12.0"
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = "0.10.9"
+windows-bindgen = "0.100.0"

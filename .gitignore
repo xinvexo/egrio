@@ -1,0 +1,33 @@
+/target/
+crates/egrio-platform-macos/macos/.build/
+.idea/
+
+# Claude Code local artifacts (preview launch config, worktrees)
+.claude/
+
+.DS_Store
+*.log
+__pycache__/
+*.pyc
+
+.env
+.env.*
+!.env.example
+
+# Private signing material
+*.p12
+*.pfx
+*.keychain
+*.keychain-db
+*.mobileprovision
+*.provisionprofile
+
+# Local acceptance output may contain machine and subscription details
+/validation-reports/
+/crates/egrio-core/bench/*_baseline.json
+*.pcap
+*.pcapng
+*.har
+
+# Local design references, not part of the product
+reference/

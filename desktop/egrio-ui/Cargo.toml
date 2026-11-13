@@ -1,0 +1,18 @@
+[package]
+name = "egrio-ui"
+version.workspace = true
+description = "Egrio's desktop interface: its components, the reconciler, and every window described once over the product backend"
+edition.workspace = true
+license.workspace = true
+license-file.workspace = true
+
+[dependencies]
+egrio-core = { workspace = true }
+egrio-desktop = { workspace = true }
+egrio-platform = { workspace = true }
+base64 = { workspace = true }
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+log = "0.4"
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true, features = ["sync", "time"] }
