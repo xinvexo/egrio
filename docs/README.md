@@ -32,7 +32,8 @@
 变更全部是 Markdown 文件（`.md` 或 `.markdown`）时，只在 Linux 的 `Docs` 作业执行 `cargo xtask docs`。
 手动触发始终运行三个平台：`full` 默认为 `false`，设为 `true` 时执行 `cargo xtask check --full`。
 三平台检查中，Windows 先运行 `cargo xtask windows-deps`，Linux 安装 GTK 4 与 libadwaita 开发依赖；
-独立的文档作业不安装这些依赖。修改系统捕获状态的验收另按[捕获层验收](runbooks/capture-layers.md)执行。
+独立的文档作业不安装这些依赖。Rust 缓存按操作系统、架构与静态/全量模式隔离，Windows SDK 与 Wintun 下载目录使用
+独立缓存保留。修改系统捕获状态的验收另按[捕获层验收](runbooks/capture-layers.md)执行。
 
 ## 文档规则
 

@@ -130,15 +130,22 @@ jobs:
       - name: Rust toolchain
         run: rustup toolchain install --profile minimal --component rustfmt --component clippy
       - name: Cargo cache
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          shared-key: ci-${{ runner.os }}-${{ runner.arch }}-${{ github.event_name == 'workflow_dispatch' && inputs.full && 'full' || 'static' }}
+          cache-workspace-crates: true
+          cache-bin: false
+          cache-on-failure: true
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      # Save before rust-cache's post-step removes non-Cargo files from target.
+      - name: Windows SDK cache
+        if: runner.os == 'Windows'
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: cargo-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
-          restore-keys: |
-            cargo-${{ runner.os }}-${{ runner.arch }}-
+            target/windows-app-sdk
+            target/wintun
+          key: windows-sdk-${{ runner.arch }}-${{ hashFiles('xtask/src/windows_app_sdk.rs', 'xtask/src/wintun.rs', 'xtask/src/pinned.rs') }}
       - name: Windows build dependencies
         if: runner.os == 'Windows'
         run: cargo xtask windows-deps
