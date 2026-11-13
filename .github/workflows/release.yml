@@ -68,18 +68,26 @@ jobs:
             { echo "PACKAGE_OPTION=--identity"; echo "PACKAGE_VALUE=-"; } >> "$GITHUB_ENV"
             exit 0
           fi
+          for name in CERTIFICATE_PASSWORD APPLE_ID APPLE_TEAM_ID APPLE_APP_PASSWORD; do
+            if [ -z "${!name}" ]; then
+              echo "::error::$name is required"
+              exit 1
+            fi
+          done
           # A keychain of the run's own, the default one so that codesign
           # finds the certificate and notarytool the profile.
+          umask 077
           keychain="$RUNNER_TEMP/signing.keychain-db"
           password=$(openssl rand -hex 24)
+          echo "::add-mask::$password"
           security create-keychain -p "$password" "$keychain"
           security set-keychain-settings -lut 21600 "$keychain"
           security unlock-keychain -p "$password" "$keychain"
           printf '%s' "$CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
           security import "$RUNNER_TEMP/certificate.p12" -k "$keychain" \
-            -P "$CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+            -P "$CERTIFICATE_PASSWORD" -T /usr/bin/codesign > /dev/null
           rm "$RUNNER_TEMP/certificate.p12"
-          security set-key-partition-list -S apple-tool:,apple: -s -k "$password" "$keychain"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$password" "$keychain" > /dev/null
           security list-keychains -d user -s "$keychain"
           security default-keychain -d user -s "$keychain"
           xcrun notarytool store-credentials egrio-notary --apple-id "$APPLE_ID" \
@@ -92,6 +100,14 @@ jobs:
           name: macos-${{ matrix.target }}
           path: target/${{ matrix.target }}/release/bundle/dmg/Egrio_*.dmg
           if-no-files-found: error
+      - name: Clean up signing material
+        if: always()
+        run: |
+          rm -f "$RUNNER_TEMP/certificate.p12"
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          if [ -e "$keychain" ]; then
+            security delete-keychain "$keychain"
+          fi
 
   windows:
     needs: version
