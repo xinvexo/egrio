@@ -5,12 +5,17 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+    inputs:
+      full:
+        description: Run the full test suite on all platforms
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'workflow_dispatch' && inputs.full && 'full' || 'static' }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 env:
@@ -21,10 +26,84 @@ env:
   RUST_BACKTRACE: "1"
 
 jobs:
+  changes:
+    name: Changes
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      code: ${{ steps.classify.outputs.code }}
+      docs: ${{ steps.classify.outputs.docs }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Classify changes
+        id: classify
+        shell: python
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PUSH_BASE_SHA: ${{ github.event.before }}
+          PUSH_HEAD_SHA: ${{ github.sha }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          import os
+          import re
+          import subprocess
+
+          def markdown_only():
+              event = os.environ["EVENT_NAME"]
+              if event == "pull_request":
+                  base, head = os.environ["PR_BASE_SHA"], os.environ["PR_HEAD_SHA"]
+              elif event == "push":
+                  base, head = os.environ["PUSH_BASE_SHA"], os.environ["PUSH_HEAD_SHA"]
+              else:
+                  return False
+              for sha in (base, head):
+                  if not re.fullmatch(r"[0-9a-f]{40}", sha) or sha == "0" * 40:
+                      return False
+                  if subprocess.run(["git", "cat-file", "-e", sha + "^{commit}"],
+                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode:
+                      return False
+              result = subprocess.run(
+                  ["git", "diff", "--no-renames", "--name-only", "-z", base, head, "--"],
+                  stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+              )
+              if result.returncode:
+                  return False
+              paths = [path for path in result.stdout.split(b"\0") if path]
+              return bool(paths) and all(path.lower().endswith((b".md", b".markdown")) for path in paths)
+
+          docs_only = markdown_only()
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"code={'false' if docs_only else 'true'}\n")
+              output.write(f"docs={'true' if docs_only else 'false'}\n")
+          print("Markdown-only change: docs gate" if docs_only else "Platform gates required")
+
+  docs:
+    name: Docs
+    needs: changes
+    if: needs.changes.outputs.docs == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Rust toolchain
+        run: rustup toolchain install --profile minimal --component rustfmt --component clippy
+      - name: Documentation check
+        run: cargo xtask docs
+
   check:
     name: Check (${{ matrix.platform }})
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 90
+    timeout-minutes: ${{ github.event_name == 'workflow_dispatch' && inputs.full && 90 || 30 }}
     strategy:
       fail-fast: false
       matrix:
@@ -61,5 +140,9 @@ jobs:
       - name: Windows build dependencies
         if: runner.os == 'Windows'
         run: cargo xtask windows-deps
+      - name: Static check
+        if: github.event_name != 'workflow_dispatch' || !inputs.full
+        run: cargo xtask check
       - name: Full check
+        if: github.event_name == 'workflow_dispatch' && inputs.full
         run: cargo xtask check --full

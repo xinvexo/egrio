@@ -28,9 +28,11 @@
 ## 工程检查
 
 [`CI` 工作流](../.github/workflows/ci.yml)在推送 `main`、提交 Pull Request 或手动触发时运行。
-`Check (macOS)`、`Check (Windows)` 与 `Check (Linux)` 分别在三个平台执行 `cargo xtask check --full`。
-Windows 先运行 `cargo xtask windows-deps`，Linux 安装 GTK 4 与 libadwaita 开发依赖。
-自动门禁覆盖构建与测试；修改系统捕获状态的验收另按[捕获层验收](runbooks/capture-layers.md)执行。
+推送与 Pull Request 默认由 `Check (macOS)`、`Check (Windows)` 与 `Check (Linux)` 执行 `cargo xtask check`；
+变更全部是 Markdown 文件（`.md` 或 `.markdown`）时，只在 Linux 的 `Docs` 作业执行 `cargo xtask docs`。
+手动触发始终运行三个平台：`full` 默认为 `false`，设为 `true` 时执行 `cargo xtask check --full`。
+三平台检查中，Windows 先运行 `cargo xtask windows-deps`，Linux 安装 GTK 4 与 libadwaita 开发依赖；
+独立的文档作业不安装这些依赖。修改系统捕获状态的验收另按[捕获层验收](runbooks/capture-layers.md)执行。
 
 ## 文档规则
 

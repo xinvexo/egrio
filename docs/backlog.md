@@ -3,6 +3,25 @@
 本页是唯一的待办清单：未完成的工作、已知缺陷与未验证范围。每项写明问题、影响与完成标准；完成后
 直接删除该项。
 
+## 依赖安全
+
+### DNS 报文编码的 CPU 耗尽风险
+
+[Cargo.lock](../Cargo.lock) 锁定的 `hickory-proto 0.25.2` 受
+[RUSTSEC-2026-0119](https://rustsec.org/advisories/RUSTSEC-2026-0119.html) 影响：报文编码中的名称压缩可能导致 CPU 耗尽。
+生产 [DNS 编码入口](../crates/egrio-core/src/dns/wire.rs) 调用 `Message::to_vec()`；外部输入在当前配置下能否触发该问题
+尚未验证。完成标准：升级到至少 `0.26.1`、适配接口并通过 DNS 回归测试。
+
+同库的 [RUSTSEC-2026-0118](https://rustsec.org/advisories/RUSTSEC-2026-0118.html) 要求启用 DNSSEC feature 并执行 NSEC3 验证；
+[Core 依赖声明](../crates/egrio-core/Cargo.toml) 关闭默认 feature、仅启用 `std`，当前未启用该触发路径。
+
+### 可选 Go 互通工具的加密依赖告警
+
+`scripts/validation/ss2022-peer` 的 [依赖声明](../scripts/validation/ss2022-peer/go.mod) 与
+[校验清单](../scripts/validation/ss2022-peer/go.sum) 固定了存在安全告警的 `golang.org/x/crypto v0.23.0`。
+该工具不进入发行包，实际导入图不包含 `ssh`，告警的适用性须按所用包与调用路径判断。完成标准：在受支持的 Go 工具链下
+升级依赖，覆盖适用的安全修复，并保留工具及显式的 Shadowsocks 2022 互通测试。
+
 ## Windows
 
 ### Wintun 唤醒竞争
@@ -15,9 +34,9 @@
 
 ### 跨平台持续集成门禁的远端验收
 
-[三平台 CI](README.md#工程检查)已配置，但尚未取得同一提交在三个远端 runner 上的全绿结果，本地门禁不能代替
-这项验证。完成标准：推送后 `Check (macOS)`、`Check (Windows)` 与 `Check (Linux)` 均通过全量门禁；失败时修复对应
-平台的问题，三项全部通过后删除此项。
+[三平台 CI](README.md#工程检查)已配置默认静态门禁与手动全量门禁，远端验收尚未完成，本地门禁不能代替这项验证。
+完成标准：同一提交的 `Check (macOS)`、`Check (Windows)` 与 `Check (Linux)` 在默认路径均通过 `cargo xtask check`，
+并在手动设置 `full=true` 后均通过 `cargo xtask check --full`；失败时修复对应平台的问题，两种范围全部成功后删除此项。
 
 ## Core 执行线程
 
