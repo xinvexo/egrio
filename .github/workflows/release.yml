@@ -25,7 +25,7 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - id: version
         name: Version
         run: |
@@ -44,7 +44,7 @@ jobs:
     # Apple silicon builds both; the Intel package is cross-compiled.
     runs-on: macos-26
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Rust
         run: rustup toolchain install && rustup target add ${{ matrix.target }}
       - name: Rosetta
@@ -87,7 +87,7 @@ jobs:
           { echo "PACKAGE_OPTION=--notarize"; echo "PACKAGE_VALUE=egrio-notary"; } >> "$GITHUB_ENV"
       - name: Package
         run: cargo xtask package --target ${{ matrix.target }} "$PACKAGE_OPTION" "$PACKAGE_VALUE"
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: macos-${{ matrix.target }}
           path: target/${{ matrix.target }}/release/bundle/dmg/Egrio_*.dmg
@@ -97,12 +97,12 @@ jobs:
     needs: version
     runs-on: windows-2025
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Rust
         run: rustup toolchain install
       - name: Package
         run: cargo xtask package
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: windows
           path: target/x86_64-pc-windows-msvc/release/bundle/nsis/Egrio_*_x64-setup.exe
@@ -112,14 +112,14 @@ jobs:
     needs: version
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: GTK
         run: sudo apt-get update && sudo apt-get install -y libgtk-4-dev libadwaita-1-dev binutils
       - name: Rust
         run: rustup toolchain install
       - name: Package
         run: cargo xtask package
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: linux
           path: target/release/bundle/deb/egrio_*_amd64.deb
@@ -132,7 +132,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           path: packages
           merge-multiple: true

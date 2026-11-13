@@ -13,12 +13,11 @@
 
 ## 门禁
 
-### 缺少跨平台持续集成门禁
+### 跨平台持续集成门禁的远端验收
 
-`cargo xtask check --full` 不会自动在 Windows 与 Linux 上运行，仓库里只有发行工作流；两者目前需要手动运行
-（见 [Windows](platforms/windows.md#验证状态) 与 [Linux](platforms/linux.md#验证状态) 的验证状态）。Windows 专有代码
-在 macOS 上只做类型检查，无法及时发现测试失败和平台专有问题。完成标准：推送时在 Windows、Ubuntu 24.04
-（带 `libgtk-4-dev` 与 `libadwaita-1-dev`）与 macOS 上各跑一遍全量门禁，三个平台都通过。
+[三平台 CI](README.md#工程检查)已配置，但尚未取得同一提交在三个远端 runner 上的全绿结果，本地门禁不能代替
+这项验证。完成标准：推送后 `Check (macOS)`、`Check (Windows)` 与 `Check (Linux)` 均通过全量门禁；失败时修复对应
+平台的问题，三项全部通过后删除此项。
 
 ## Core 执行线程
 

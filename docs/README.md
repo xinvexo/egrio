@@ -23,6 +23,15 @@
 代码旁的 README 只说明所在目录的构建、测试与使用：[Core 基准](../crates/egrio-core/bench/README.md)、
 [验证脚本](../scripts/validation/README.md)与[应用图标](../design/icons/README.md)。
 
+漏洞报告方式见[安全说明](../SECURITY.md)。
+
+## 工程检查
+
+[`CI` 工作流](../.github/workflows/ci.yml)在推送 `main`、提交 Pull Request 或手动触发时运行。
+`Check (macOS)`、`Check (Windows)` 与 `Check (Linux)` 分别在三个平台执行 `cargo xtask check --full`。
+Windows 先运行 `cargo xtask windows-deps`，Linux 安装 GTK 4 与 libadwaita 开发依赖。
+自动门禁覆盖构建与测试；修改系统捕获状态的验收另按[捕获层验收](runbooks/capture-layers.md)执行。
+
 ## 文档规则
 
 ### 只写现在
