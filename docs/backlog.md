@@ -30,14 +30,6 @@
 [Windows 特权服务](platforms/windows.md#特权服务)）。完成标准：Wintun 发布包含上游 ec0a6b98 的官方签名
 版本后，升级 `wintun.dll` 并去掉唤醒包。
 
-## 门禁
-
-### 跨平台持续集成门禁的远端验收
-
-[三平台 CI](README.md#工程检查)已配置默认静态门禁与手动全量门禁，远端验收尚未完成，本地门禁不能代替这项验证。
-完成标准：同一提交的 `Check (macOS)`、`Check (Windows)` 与 `Check (Linux)` 在默认路径均通过 `cargo xtask check`，
-并在手动设置 `full=true` 后均通过 `cargo xtask check --full`；失败时修复对应平台的问题，两种范围全部成功后删除此项。
-
 ## Core 执行线程
 
 ### 单队列捕获的多流峰值
