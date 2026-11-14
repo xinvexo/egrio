@@ -147,7 +147,7 @@ launchd 只启动与注册时签法相同的服务：载入的任务带着注册
 system/com.xinvexo.egrio.service` 里的 LWCR；类别取值见 Apple“Defining launch environment and library constraints”，
 3 是开发身份、6 是 Developer ID）。签名类别变化可能导致 Launch Constraint Violation、状态回到 requires-approval，
 仅重复注册不足以卸下受旧约束的任务。`SMAppService.h` 建议可执行文件变化时先注销再注册；这两步使用独立进程，
-避免复用进程内的旧登记状态。换装签名类别不同的包时，装好新包后以它的可执行文件先后
+避免复用进程内的旧登记状态。开发期间换装签名类别不同的包时，装好新包后以它的可执行文件先后
 运行 `EGRIO_MACOS_SERVICE=unregister` 与 `EGRIO_MACOS_SERVICE=register`（两个进程），再在登录项中允许。
 应用更新替换了包，launchd 却仍运行着旧服务：它在下一个连接到来时发现自己的可执行文件已被
 替换（文件标识不同于启动时），没有会话持有隧道就退出，launchd 随即从更新后的包里启动新服务，桌面在
@@ -505,8 +505,7 @@ SDK 的 `Network/path_monitor.h`、`Network/path.h` 与 `Network/interface.h` �
   主窗口关闭与重开已核对。macOS 27.2 的托盘按需建立并释放成员行，选中、延迟与键盘高亮正确；关窗后静止托盘图标的行为已核对。
 - 打包与更新：arm64 应用与 DMG 通过签名、公证与 Gatekeeper；x86_64 包通过交叉编译、
   签名与 Rosetta 服务握手。更新流程用本地发布描述覆盖下载、SHA-256 校验、Finder 挂载、退出与校验失败。
-- 登录项：macOS 13.6 的应用包覆盖登录项启停、重启后登录启动与静默托盘启动。签名类别切换后的服务重新批准与恢复
-  在 macOS 27.2 验证；自动恢复的限制见[待办](../backlog.md#macos-服务换签名类别后的恢复)。
+- 登录项：macOS 13.6 的应用包覆盖登录项启停、重启后登录启动与静默托盘启动。
 
 未覆盖：Intel 硬件上的安装与 TUN、macOS 27.2 的完整捕获层矩阵、实体环境的登录后启动、macOS 13.6 托盘子菜单的
 按需生成时机，以及消息胶囊的真实指针悬停。macOS 13.6 验收环境的 IPv6 字面量 UDP 在基线下也无应答，不能据此判定

@@ -93,14 +93,6 @@ macOS 的开机启动改用应用自己的登录项（`SMAppService.mainAppServi
 不开主窗口）已在 macOS 13.6 虚拟机上验证，macOS 实体环境上还没有。完成标准：签名的应用包在 macOS 实体环境上登录后启动，
 静默启动打开时不显示主窗口，并写入 macOS 的验证状态。
 
-### macOS 服务换签名类别后的恢复
-
-已获允许的服务换成签名类别不同的包后（Apple Development 与 Developer ID 之间，见
-[macOS 平台](platforms/macos.md#产品身份签名与服务安装)），launchd 拒绝启动、系统要求重新批准，被拒的任务仍载入在
-launchd 里。桌面开启 TUN 时只再注册，卸不下这个任务；批准后系统会不会换掉它没有验证，现在要手动注销再注册。
-完成标准：在 macOS 实体环境上从已允许的开发签名服务换成 Developer ID 包，开启 TUN 并批准一次即可用；不行就由桌面在另一个
-进程里注销再注册。
-
 ### 节点页的键盘操作
 
 macOS 上节点页的磁贴不能用 Tab 聚焦，也不能用空格或回车按下，只能用指针或辅助功能的按下（VoiceOver）。完成标准：
