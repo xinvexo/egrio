@@ -137,7 +137,7 @@ pub fn view(state: &State) -> TrayView {
     let text = state.text();
     let profile = state.active_profile.ready().and_then(Option::as_ref);
     let busy = state.transition_pending();
-    let selection_busy = busy || state.downloading_rules();
+    let selection_busy = state.selection_locked();
     let mut items = vec![
         command(text.tray_show(), TrayAction::ShowMainWindow, true, false),
         TrayItem::Separator,

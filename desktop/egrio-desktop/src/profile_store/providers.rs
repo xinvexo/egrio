@@ -9,21 +9,9 @@ impl ProfileStore {
         let _guard = STORE_WRITE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
         let doc = self.load()?;
         let record = Self::record(&doc, id)?;
-        let required = required_provider_definitions(&*self.parsed(record)?)?;
-        Ok(required
+        Ok(self
+            .missing_required_providers(record, &*self.parsed(record)?)?
             .into_iter()
-            .filter(|provider| {
-                let descriptor = provider_descriptor(provider);
-                !record.provider_cache.iter().any(|cache| {
-                    cache.name == provider.name
-                        && cache.descriptor_hash == descriptor
-                        && cache.entry_count > 0
-                        && self
-                            .provider_path(&descriptor, &cache.content_hash)
-                            .metadata()
-                            .is_ok_and(|metadata| metadata.is_file() && metadata.len() > 0)
-                })
-            })
             .map(|provider| SavedRuleProvider {
                 name: provider.name,
                 url: provider.url,
@@ -32,6 +20,28 @@ impl ProfileStore {
                 entry_count: None,
             })
             .collect())
+    }
+
+    /// The providers the rules name whose content is not cached.
+    pub(super) fn missing_required_providers(
+        &self,
+        record: &StoredProfile,
+        source: &ParsedSource,
+    ) -> Result<Vec<RuleProvider>, ProfileStoreError> {
+        let mut required = required_provider_definitions(source)?;
+        required.retain(|provider| {
+            let descriptor = provider_descriptor(provider);
+            !record.provider_cache.iter().any(|cache| {
+                cache.name == provider.name
+                    && cache.descriptor_hash == descriptor
+                    && cache.entry_count > 0
+                    && self
+                        .provider_path(&descriptor, &cache.content_hash)
+                        .metadata()
+                        .is_ok_and(|metadata| metadata.is_file() && metadata.len() > 0)
+            })
+        });
+        Ok(required)
     }
 
     pub(super) fn load_required_provider_contents(

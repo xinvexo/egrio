@@ -343,6 +343,35 @@ fn unchanged_provider_content_updates_fetch_metadata_without_changing_effective_
 }
 
 #[test]
+fn a_start_takes_no_rules_until_the_rule_sets_they_name_are_cached() {
+    let fixture = Fixture::new();
+    let source = "proxies:\n  - {name: Node, type: http, server: example.com, port: 80}\nrule-providers:\n  Used:\n    type: http\n    behavior: domain\n    url: https://example.com/used\nrules: ['RULE-SET,Used,REJECT','MATCH,DIRECT']\n";
+    let saved = fixture
+        .store
+        .create_profile("Start".into(), source.into())
+        .unwrap();
+    let awaiting = fixture.store.active_start_snapshot().unwrap().unwrap();
+    assert!(awaiting.awaiting_rule_sets);
+    assert_eq!(awaiting.profile.rules.iter().count(), 0);
+    assert!(awaiting.profile.rule_sets.is_empty());
+    assert_eq!(awaiting.profile.proxies.len(), 1);
+
+    let missing = fixture
+        .store
+        .missing_rule_provider_fetch_targets(&saved.id)
+        .unwrap();
+    fixture
+        .store
+        .save_rule_provider_content(&saved.id, &missing[0], "payload: [example.org]\n", 1)
+        .unwrap();
+    let complete = fixture.store.active_start_snapshot().unwrap().unwrap();
+    assert!(!complete.awaiting_rule_sets);
+    assert_eq!(complete.profile.rules.iter().count(), 2);
+    assert_eq!(complete.profile.rule_sets.len(), 1);
+    assert_eq!(complete.source_revision, awaiting.source_revision);
+}
+
+#[test]
 fn runtime_requires_only_referenced_providers_and_reuses_matching_content() {
     let fixture = Fixture::new();
     let source = "rule-providers:\n  Used:\n    type: http\n    behavior: domain\n    url: https://example.com/used\n  Unused:\n    type: file\n    behavior: unsupported\nrules: ['RULE-SET,Used,REJECT','MATCH,DIRECT']\n";

@@ -147,20 +147,8 @@ async fn cold_providers_use_the_selected_node_then_activate_the_same_core() {
         runtime.start().await.is_err(),
         "normal start cannot bypass preparation"
     );
-    let selection = runtime
-        .configure(
-            egrio_runtime::RuntimeConfigurationChange::Policy(
-                egrio_core::CorePolicyUpdate::SelectGroup {
-                    group: "Exit".into(),
-                    member: "Broken".into(),
-                },
-            ),
-            || panic!("a selection during download must not be saved"),
-        )
-        .await;
-    assert_eq!(selection.phase, egrio_runtime::ConfigurationPhase::Rejected);
     let refresh = RuleProviderRefresh::begin(id.clone(), fixture.store.clone(), || {
-        CoreDownloadClient::new(runtime.clone())
+        RuleSetClient::new(Some(runtime.clone()))
     })
     .unwrap();
     refresh.prepare_required().await.unwrap();
@@ -221,12 +209,12 @@ async fn failed_preparation_can_change_nodes_and_retry_without_recreating_core()
         .profile;
     let (_sdk, runtime, generation, loads, listener) = prepare(partial).await;
     let failed = RuleProviderRefresh::begin(id.clone(), fixture.store.clone(), || {
-        CoreDownloadClient::new(runtime.clone())
+        RuleSetClient::new(Some(runtime.clone()))
     })
     .unwrap();
     let error = failed.prepare_required().await.unwrap_err();
     drop(failed);
-    runtime.core_preparation_failed(generation, error);
+    assert!(error.contains("One"), "{error}");
     assert_eq!(runtime.status().state, RuntimeState::Preparing);
     assert!(tokio::net::TcpStream::connect(listener).await.is_err());
     let store = fixture.store.clone();
@@ -254,7 +242,7 @@ async fn failed_preparation_can_change_nodes_and_retry_without_recreating_core()
         report.error
     );
     let retried = RuleProviderRefresh::begin(id, fixture.store.clone(), || {
-        CoreDownloadClient::new(runtime.clone())
+        RuleSetClient::new(Some(runtime.clone()))
     })
     .unwrap();
     retried.prepare_required().await.unwrap();
@@ -282,7 +270,7 @@ async fn core_download_rejects_local_redirects_and_truncated_bodies() {
             .profile;
         let (_sdk, runtime, _, _, _) = prepare(partial).await;
         let refresh = RuleProviderRefresh::begin(id.clone(), fixture.store.clone(), || {
-            CoreDownloadClient::new(runtime.clone())
+            RuleSetClient::new(Some(runtime.clone()))
         })
         .unwrap();
         assert!(refresh.prepare_required().await.is_err());
@@ -327,12 +315,9 @@ async fn stopping_preparation_cancels_a_download_waiting_for_headers() {
     .await;
     let download_runtime = runtime.clone();
     let download = tokio::spawn(async move {
-        CoreDownloadClient::new(download_runtime)
+        RuleSetClient::new(Some(download_runtime))
             .unwrap()
-            .get(
-                reqwest::Url::parse("http://provider.egrio.test/one").unwrap(),
-                "Egrio/test",
-            )
+            .get(reqwest::Url::parse("http://provider.egrio.test/one").unwrap())
             .await
     });
     request_seen.await.unwrap();

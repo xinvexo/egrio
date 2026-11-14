@@ -60,14 +60,6 @@ impl Runtime {
         .map_err(|error| RuntimeStartError::Task(error.to_string()))?
     }
 
-    /// The failure of host preparation, retained without opening any ingress.
-    pub fn core_preparation_failed(&self, generation: RuntimeCoreGeneration, error: String) {
-        let mut control = self.control.lock().expect("runtime control mutex");
-        if control.state == RuntimeState::Preparing && control.core == Some(generation) {
-            control.degradation_error = Some(error);
-        }
-    }
-
     /// Opens a host-originated stream using the current Core and its selection.
     /// Network I/O runs without holding the lifecycle operation lock.
     pub async fn connect_outbound(

@@ -86,7 +86,13 @@ async fn switch(
         runtime,
         CaptureLayers { system_proxy, tun },
         spec,
-        |spec| async { Ok(spec) },
+        |spec| async {
+            runtime
+                .start_with_spec(spec)
+                .await
+                .map(|_| LayerSwitch::Started)
+                .map_err(|error| error.to_string())
+        },
     )
     .await
 }
@@ -268,6 +274,8 @@ fn a_layer_reload_keeps_the_running_core_listener() {
 struct TestHost {
     sdk: EgrioSdk,
     preparations: AtomicUsize,
+    /// A Core connection was dialed without egress protection.
+    unprotected: AtomicBool,
 }
 
 impl DesktopHost for TestHost {
@@ -288,6 +296,10 @@ impl DesktopHost for TestHost {
 
     fn default_capture_mtu(&self) -> Result<u32, String> {
         Ok(egrio_core::NativeCoreCaptureConfig::default().mtu)
+    }
+
+    fn take_unprotected_dials(&self) -> bool {
+        self.unprotected.swap(false, Ordering::SeqCst)
     }
 
     async fn recover_unresolved(&self) -> Result<(), String> {
@@ -471,10 +483,15 @@ fn test_host_with_core<C: CoreConfigSource + 'static>(
         .system_proxy(platform)
         .build()
         .unwrap();
+    host_over(sdk, checkpoints)
+}
+
+fn host_over(sdk: EgrioSdk, checkpoints: Arc<dyn CheckpointStore>) -> TestSdk {
     DesktopRuntime::with_host(
         TestHost {
             sdk,
             preparations: AtomicUsize::new(0),
+            unprotected: AtomicBool::new(false),
         },
         checkpoints,
         Arc::default(),
@@ -586,7 +603,7 @@ async fn core_preparation_pins_the_same_snapshot_as_the_listener() {
     assert_eq!(prepared.profile_id, "a");
     assert_eq!(prepared.capture_mtu, 1500);
     assert_eq!(
-        started.core.unwrap().listen_addr,
+        started.spec.core.unwrap().listen_addr,
         Some(prepared.network.listen_addr().unwrap())
     );
     host.core_start_spec(spec(CaptureLayers::NONE).unwrap())
@@ -668,6 +685,7 @@ async fn every_core_start_runs_the_profile_read_for_it() {
         TestHost {
             sdk,
             preparations: AtomicUsize::new(0),
+            unprotected: AtomicBool::new(false),
         },
         checkpoints,
         prepared.clone(),
@@ -941,6 +959,7 @@ async fn the_running_tun_layer_takes_the_exclusions_of_the_core_mode_in_place() 
         TestHost {
             sdk,
             preparations: AtomicUsize::new(0),
+            unprotected: AtomicBool::new(false),
         },
         checkpoints,
         Arc::default(),
@@ -1344,3 +1363,5 @@ async fn a_failed_shutdown_can_be_retried_and_releases_the_activity() {
         .expect("shutdown retry after a restore failure");
     assert!(!holds_background_activity(&host).await);
 }
+
+mod rule_download;

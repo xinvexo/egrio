@@ -72,9 +72,11 @@ Core device 与 generation，但不绑定普通 TCP/DNS 监听、不取得平台
 普通监听与平台资源的 start 事务；普通 `start` 不能绕过尚未完成的准备。输入已完整的宿主直接 start，
 内部复用同一条 device 创建与监听启用路径。
 
-准备失败保持该 Core 和 `Preparing`，错误由宿主记录；准备进行中拒绝策略配置，失败后可修改选择并
-重新准备。停止准备直接关闭 Runtime 拥有的 Core，无平台资源需要恢复。宿主停止或切换代次后，旧
-generation 的激活请求不能启动新的流量入口。
+`Preparing` 只表示 Core 已建、入口未开：宿主取数据的进度与失败由宿主自己持有，Runtime 不记录，
+策略配置照常作用在已准备的 Core 上（取数据期间是否允许改选由宿主决定）。激活按请求的捕获核对 Core
+的 MTU；监听开不起来时关闭该代次并回到 `Created`，Runtime 不再报告这个 Core。停止准备直接关闭
+Runtime 拥有的 Core，无平台资源需要恢复。宿主停止或切换代次后，旧 generation 的激活请求不能启动
+新的流量入口。
 
 `EgrioSdk` 创建的 Runtime 把事务（start、reload、stop、配置操作、quiesce）派到 SDK 的第一个 Core 执行器，
 捕获的每个队列的包泵各派到一个执行器（`Runtime::with_executors`）。每个执行器是只有一个工作线程的 Tokio
@@ -229,7 +231,11 @@ PacketCapture，Windows 与 Linux 另带 Route、DNS 与防泄漏的 Firewall，
   `Degraded`。reload 新增 TUN 后，若 TUN 关闭期间有 Core 拨号未受出口保护（macOS 绑定器的
   `take_unbound`、Linux 标记 guard 的 `take_unmarked`），桌面切断全部 Core 连接
   （见 [macOS 出口环路隔离](../platforms/macos.md#出口环路隔离)）；
-- Runtime 未运行：先由 `core_start_spec` 固定配置快照，再以目标 spec start；
+- Runtime 未运行：先由 `core_start_spec` 固定配置快照，再以目标 spec start；快照还缺规则集时改为
+  准备 Core，下载完成后在同一 Core 上激活（见[来源解析与生效](profile-store.md#来源解析与生效)）。
+  这个 Core 在隧道打开前已经拨过号，带 TUN 激活后同样按上一条切断未受保护的连接；
+- Runtime 准备中：按当前配置重新决定。同一来源仍缺规则集就只更新目标层，下载继续；来源变了或不再缺
+  规则集，先停掉已准备的 Core 再走“未运行”；
 - 目标为空：stop；
 - Runtime `Degraded`：先以“已提交的层去掉 TUN”原地恢复（见[生命周期事务](#生命周期事务)），
   保留系统代理与 Core，再按 Running 规则切换；Runtime 拒绝原地恢复（降级并非平台会话丢失）时才

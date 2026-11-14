@@ -80,29 +80,6 @@ impl<B: Backend> Ui<B> {
         });
     }
 
-    pub(super) fn retry_preparation(&mut self) {
-        if self.state.transition_pending() {
-            return;
-        }
-        let Some(preparing) = self
-            .state
-            .capture
-            .as_ref()
-            .and_then(|status| status.preparation.as_ref())
-        else {
-            return;
-        };
-        let layer = if preparing.layers.system_proxy {
-            CaptureLayer::SystemProxy
-        } else {
-            CaptureLayer::Tun
-        };
-        let runtime = self.desktop.runtime.clone();
-        self.begin_change(Change::Capture { layer, enabled: true }, async move {
-            Msg::CaptureChanged(capture::set_capture_layer(&runtime, layer, true).await)
-        });
-    }
-
     /// A capture switch ended: its switches show the layers it left at
     /// once, and the status read next confirms them.
     pub(super) fn capture_changed(&mut self, result: Result<capture::CaptureLayersReport, String>) {
@@ -138,6 +115,24 @@ impl<B: Backend> Ui<B> {
         }
         self.load_capture();
         self.load_core();
+    }
+
+    /// The layers that waited for rule sets did not turn on once they
+    /// arrived: each says why.
+    pub(super) fn capture_start_failed(&mut self, layers: CaptureLayers, error: String) {
+        let text = self.state.text();
+        for (layer, source, failed) in [
+            (
+                CaptureLayer::SystemProxy,
+                Source::SystemProxy,
+                text.system_proxy_on_failed(),
+            ),
+            (CaptureLayer::Tun, Source::Tun, text.tun_on_failed()),
+        ] {
+            if layers.get(layer) {
+                self.note(Level::Error, source, failed, Some(error.clone()));
+            }
+        }
     }
 
     /// Turns the layers the user left on when the app last ran back on,
@@ -199,7 +194,7 @@ impl<B: Backend> Ui<B> {
     }
 
     pub(super) fn set_traffic_policy(&mut self, mode: TrafficPolicyMode) {
-        if self.state.transition_pending() || self.state.downloading_rules() {
+        if self.state.selection_locked() {
             return;
         }
         let Some(profile) = self.state.active_profile.ready().and_then(Option::as_ref) else {

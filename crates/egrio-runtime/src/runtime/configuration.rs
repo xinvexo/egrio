@@ -288,13 +288,6 @@ impl Runtime {
                 "Runtime/Core generation changed while configuration was queued",
             );
         }
-        let status = self.status();
-        if status.state == RuntimeState::Preparing && status.degradation_error.is_none() {
-            return report.fail(
-                ConfigurationPhase::Rejected,
-                "Core preparation is in progress",
-            );
-        }
         if let Err(error) = self.configuration_update_admission() {
             // Preserve the operation whose uncertainty blocks admission.
             return report.fail(ConfigurationPhase::Rejected, error);

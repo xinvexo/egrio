@@ -36,9 +36,6 @@ macro_rules! strings {
 }
 
 strings! {
-    preparing_rules => "正在准备规则集，尚未接管流量", "Preparing rule sets; capture has not started";
-    preparation_failed => "规则准备未完成", "Rule preparation did not finish";
-    retry_preparation => "重试", "Retry";
     nav_activity => "活动", "Activity";
     nav_nodes => "节点", "Nodes";
     nav_profiles => "配置", "Profiles";
@@ -57,6 +54,8 @@ strings! {
     system_proxy_on_failed => "开启系统代理失败", "Couldn't turn on System Proxy";
     system_proxy_off_failed => "关闭系统代理失败", "Couldn't turn off System Proxy";
     tun_on_failed => "开启 TUN 模式失败", "Couldn't turn on TUN Mode";
+    rule_sets_downloading => "正在下载规则集", "Downloading rule sets";
+    rule_sets_failed => "规则集下载失败，请切换节点", "Couldn't download the rule sets; switch nodes";
     tun_off_failed => "关闭 TUN 模式失败", "Couldn't turn off TUN Mode";
     tun_approval => "TUN 模式需要批准", "TUN Mode needs approval";
     tun_not_restored => "TUN 环境未就绪，TUN 模式没有开启", "TUN Mode stayed off: its environment isn't ready";

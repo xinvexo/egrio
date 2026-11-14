@@ -9,7 +9,7 @@ use reqwest::Url;
 use std::time::Duration;
 
 mod core;
-pub(crate) use core::CoreDownloadClient;
+use core::CoreDownloadClient;
 
 /// Identifies Egrio and requests the supported Clash YAML dialect from
 /// subscription services. The `(clash.meta)` compatibility marker selects
@@ -84,6 +84,49 @@ fn is_share_link_list(body: &str) -> bool {
             byte.is_ascii_alphanumeric() || matches!(byte, b'+' | b'/' | b'=' | b'-' | b'_')
         })
     }) && text.len() >= 16
+}
+
+const RULE_SET_USER_AGENT: &str = "Egrio/0.1";
+
+/// The client of one rule-set refresh, with one connection pool for all of
+/// its downloads: the Runtime's own Core where one runs, through the node
+/// chosen in it, else the system's network path.
+pub(crate) enum RuleSetClient {
+    Core(CoreDownloadClient),
+    System(reqwest::Client),
+}
+
+impl RuleSetClient {
+    pub(crate) fn new(
+        core: Option<std::sync::Arc<egrio_runtime::Runtime>>,
+    ) -> Result<Self, String> {
+        match core {
+            Some(runtime) => CoreDownloadClient::new(runtime).map(Self::Core),
+            None => remote_fetch_client().map(Self::System),
+        }
+    }
+
+    /// The document at `url`, which [`validate_remote_url`] accepted.
+    pub(crate) async fn get(&self, url: Url) -> Result<String, String> {
+        match self {
+            Self::Core(client) => client.get(url, RULE_SET_USER_AGENT).await,
+            Self::System(client) => {
+                let response = client
+                    .get(url)
+                    .header(USER_AGENT, RULE_SET_USER_AGENT)
+                    .send()
+                    .await
+                    .map_err(request_error)?;
+                if !response.status().is_success() {
+                    return Err(format!(
+                        "rule provider fetch failed: HTTP {}",
+                        response.status().as_u16()
+                    ));
+                }
+                read_limited_body(response).await
+            }
+        }
+    }
 }
 
 /// A failed request with its causes (DNS, connect, TLS, timeout) but without

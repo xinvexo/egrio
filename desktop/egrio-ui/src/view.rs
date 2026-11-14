@@ -89,10 +89,11 @@ fn capture_toggle(state: &State, layer: CaptureLayer) -> CaptureToggle {
         enabled: supported && !needs_profile && !state.transition_slow(),
         tooltip: preparing
             .map(|preparing| {
-                preparing
-                    .error
-                    .clone()
-                    .unwrap_or_else(|| text.preparing_rules().into())
+                match preparing.error {
+                    Some(_) => text.rule_sets_failed(),
+                    None => text.rule_sets_downloading(),
+                }
+                .into()
             })
             .or_else(|| {
                 interruption
@@ -124,7 +125,7 @@ fn toolbar(state: &State) -> ToolbarView {
                 TrafficPolicyMode::Global => 1,
                 TrafficPolicyMode::Direct => 2,
             }),
-            enabled: profile.is_some() && !state.transition_slow() && !state.downloading_rules(),
+            enabled: profile.is_some() && !state.selection_waiting(),
             tooltip: state.needs_profile().then(|| text.needs_profile().into()),
         },
         messages: MessagesButton {
@@ -337,8 +338,12 @@ mod tests {
         let preparing = toolbar(&state);
         assert!(preparing.tun.on && preparing.tun.enabled);
         assert_eq!(preparing.tun.state, ToggleState::Pending);
+        assert_eq!(
+            preparing.tun.tooltip.as_deref(),
+            Some("Downloading rule sets")
+        );
         assert!(!preparing.policy.enabled);
-        assert!(state.downloading_rules());
+        assert!(state.downloading_rule_sets());
         state
             .capture
             .as_mut()
@@ -349,6 +354,11 @@ mod tests {
             .error = Some("download failed".into());
         let failed = toolbar(&state);
         assert_eq!(failed.tun.state, ToggleState::Warning);
+        assert_eq!(
+            failed.tun.tooltip.as_deref(),
+            Some("Couldn't download the rule sets; switch nodes"),
+            "the switch says what to do, not the transport's error"
+        );
         assert!(
             failed.policy.enabled,
             "selection can change after the download has ended"

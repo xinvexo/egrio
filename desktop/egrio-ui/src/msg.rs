@@ -45,7 +45,6 @@ pub enum Msg {
     /// The quit's cleanup finished: the process may end.
     ExitReady,
     ToggleCapture(CaptureLayer),
-    RetryPreparation,
     SetTrafficPolicy(TrafficPolicyMode),
     /// Choose a Select group's member in the active profile.
     SelectMember {

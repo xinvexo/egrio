@@ -397,7 +397,6 @@ impl<B: Backend> Ui<B> {
             Msg::Quit => self.quit(),
             Msg::ExitReady => self.backend.exit(),
             Msg::ToggleCapture(layer) => self.toggle_capture(layer),
-            Msg::RetryPreparation => self.retry_preparation(),
             Msg::SetTrafficPolicy(mode) => self.set_traffic_policy(mode),
             Msg::SelectMember { group_id, member } => self.select_member(group_id, member),
             Msg::MemberSelected(result) => {
@@ -525,7 +524,7 @@ impl<B: Backend> Ui<B> {
                     status.support.tun,
                 )
             }),
-            busy: state.transition_pending() || state.downloading_rules(),
+            busy: state.selection_locked(),
         };
         if self.tray.as_ref() == Some(&key) {
             return;
@@ -736,15 +735,16 @@ impl<B: Backend> Ui<B> {
     fn desktop_event(&mut self, event: DesktopEvent) {
         let text = self.state.text();
         match event {
-            DesktopEvent::CorePreparationFailed { message } => {
+            DesktopEvent::RuleSetDownloadFailed { message } => {
                 self.note(
                     Level::Error,
                     Source::Rules,
-                    self.state.text().preparation_failed(),
+                    text.rule_sets_failed(),
                     Some(message),
                 );
-                self.load_capture();
-                self.load_core();
+            }
+            DesktopEvent::CaptureStartFailed { layers, message } => {
+                self.capture_start_failed(layers, message);
             }
             DesktopEvent::NativeStateChanged => {
                 self.load_capture();

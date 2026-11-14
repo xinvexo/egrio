@@ -655,7 +655,7 @@ fn entry_tiles<'a>(
     text: Text,
 ) -> Vec<Tile> {
     let state = profile.state;
-    let waiting = state.transition_slow() || state.downloading_rules();
+    let waiting = state.selection_waiting();
     let choices = |members: Vec<&'a str>, chosen: Option<&'a str>| -> Vec<Tile> {
         members
             .into_iter()
@@ -816,7 +816,7 @@ pub fn view(state: &State) -> Node {
             },
             None => None,
         },
-        waiting: state.transition_slow() || state.downloading_rules(),
+        waiting: state.selection_waiting(),
     };
     let (cards, members) = page.built(key, || {
         let profile = Profile::new(inventory, state);

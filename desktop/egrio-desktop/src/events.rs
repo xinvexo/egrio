@@ -16,8 +16,15 @@ use tokio::sync::broadcast::error::RecvError;
 pub enum DesktopEvent {
     /// A Runtime, capture or Core state transition landed.
     NativeStateChanged,
-    /// Required configuration data could not be prepared or activated.
-    CorePreparationFailed { message: String },
+    /// The rule sets a start waits for did not arrive through the chosen
+    /// node; changing the node downloads them again.
+    RuleSetDownloadFailed { message: String },
+    /// The rule sets arrived, and the layers that waited for them did not
+    /// turn on.
+    CaptureStartFailed {
+        layers: egrio_platform::CaptureLayers,
+        message: String,
+    },
     /// Profile contents, the active profile, or a persisted policy-group
     /// choice changed.
     ProfilesChanged,
@@ -96,8 +103,12 @@ fn publish(event: DesktopEvent) {
     let _ = CHANNEL.send(event);
 }
 
-pub fn notify_core_preparation_failed(message: String) {
-    publish(DesktopEvent::CorePreparationFailed { message });
+pub fn notify_rule_set_download_failed(message: String) {
+    publish(DesktopEvent::RuleSetDownloadFailed { message });
+}
+
+pub fn notify_capture_start_failed(layers: egrio_platform::CaptureLayers, message: String) {
+    publish(DesktopEvent::CaptureStartFailed { layers, message });
 }
 
 pub fn notify_native_state_changed() {

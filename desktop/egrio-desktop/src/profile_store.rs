@@ -391,6 +391,28 @@ impl ProfileStore {
         self.active_snapshot(false)
     }
 
+    /// The active profile as a Core start takes it: complete, or, while rule
+    /// sets its rules name are missing, without any rule, so the Core that
+    /// downloads them never routes by a partial list.
+    pub(crate) fn active_start_snapshot(
+        &self,
+    ) -> Result<Option<EffectiveConfigSnapshot>, ProfileStoreError> {
+        let _guard = STORE_WRITE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let doc = self.load()?;
+        let Some(id) = doc.active_profile_id.as_deref() else {
+            return Ok(None);
+        };
+        let record = Self::record(&doc, id)?;
+        let source = self.parsed(record)?;
+        if self.missing_required_providers(record, &source)?.is_empty() {
+            return self.compose_source(record, &source, true).map(Some);
+        }
+        let mut snapshot = self.compose_source(record, &source, false)?;
+        snapshot.profile.rules = Default::default();
+        snapshot.awaiting_rule_sets = true;
+        Ok(Some(snapshot))
+    }
+
     fn active_snapshot(
         &self,
         include_provider_contents: bool,

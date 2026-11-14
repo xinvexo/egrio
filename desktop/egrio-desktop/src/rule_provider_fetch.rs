@@ -1,17 +1,12 @@
-use reqwest::header::USER_AGENT;
 use serde::Serialize;
 use std::collections::HashSet;
-use std::sync::{LazyLock, Mutex};
+use std::sync::{Arc, LazyLock, Mutex};
 use time::OffsetDateTime;
 
 use crate::profile_source::parse_rule_provider_entries;
 use crate::profile_store::{ProfileStore, SavedRuleProvider};
-use crate::remote_fetch::CoreDownloadClient;
-use crate::remote_fetch::{
-    read_limited_body, remote_fetch_client, request_error, validate_remote_url,
-};
+use crate::remote_fetch::{validate_remote_url, RuleSetClient};
 use egrio_runtime::Runtime;
-use std::sync::Arc;
 
 /// Outcome of the rules-page "refresh everything" button: which providers
 /// got fresh content and which failed (name plus error, so one bad mirror
@@ -62,47 +57,22 @@ impl Drop for RefreshPermit {
 struct RuleProviderRefresh {
     profile_id: String,
     store: ProfileStore,
-    client: ProviderClient,
+    client: RuleSetClient,
     _permit: RefreshPermit,
 }
 
-enum ProviderClient {
-    Network(reqwest::Client),
-    Core(CoreDownloadClient),
-}
-impl From<reqwest::Client> for ProviderClient {
-    fn from(client: reqwest::Client) -> Self {
-        Self::Network(client)
-    }
-}
-impl From<CoreDownloadClient> for ProviderClient {
-    fn from(client: CoreDownloadClient) -> Self {
-        Self::Core(client)
-    }
-}
-
 impl RuleProviderRefresh {
-    fn open(profile_id: String, runtime: Option<Arc<Runtime>>) -> Result<Self, String> {
-        Self::begin(
-            profile_id,
-            ProfileStore::open().map_err(|error| error.to_string())?,
-            || match runtime {
-                Some(runtime) => CoreDownloadClient::new(runtime).map(ProviderClient::Core),
-                None => remote_fetch_client().map(ProviderClient::Network),
-            },
-        )
-    }
-
-    fn begin<C: Into<ProviderClient>>(
+    /// Admission comes first: a refusal builds no client.
+    fn begin(
         profile_id: String,
         store: ProfileStore,
-        make_client: impl FnOnce() -> Result<C, String>,
+        make_client: impl FnOnce() -> Result<RuleSetClient, String>,
     ) -> Result<Self, String> {
         let permit = RefreshPermit::acquire(&profile_id)?;
         Ok(Self {
             profile_id,
             store,
-            client: make_client()?.into(),
+            client: make_client()?,
             _permit: permit,
         })
     }
@@ -170,25 +140,7 @@ impl RuleProviderRefresh {
                 target.name,
             ));
         };
-        let provider_url = validate_remote_url(url)?;
-        let body = match &self.client {
-            ProviderClient::Core(client) => client.get(provider_url, "Egrio/0.1").await?,
-            ProviderClient::Network(client) => {
-                let response = client
-                    .get(provider_url)
-                    .header(USER_AGENT, "Egrio/0.1")
-                    .send()
-                    .await
-                    .map_err(request_error)?;
-                if !response.status().is_success() {
-                    return Err(format!(
-                        "rule provider fetch failed: HTTP {}",
-                        response.status().as_u16()
-                    ));
-                }
-                read_limited_body(response).await?
-            }
-        };
+        let body = self.client.get(validate_remote_url(url)?).await?;
         let entries = parse_rule_provider_entries(&body);
         if entries.is_empty() {
             return Err(format!(
@@ -212,18 +164,21 @@ impl RuleProviderRefresh {
     }
 }
 
+/// Downloads the rule sets the profile's rules name and the cache lacks,
+/// through `runtime`'s Core. Existing caches whose descriptors still match
+/// are reused; providers no rule names are not fetched.
 pub(crate) async fn prepare_via_core(
     profile_id: String,
     runtime: Arc<Runtime>,
 ) -> Result<(), String> {
     let store = ProfileStore::open().map_err(|error| error.to_string())?;
-    prepare_profile_rule_providers_in(profile_id, store, || CoreDownloadClient::new(runtime)).await
+    prepare_profile_rule_providers_in(profile_id, store, || RuleSetClient::new(Some(runtime))).await
 }
 
-async fn prepare_profile_rule_providers_in<C: Into<ProviderClient>>(
+async fn prepare_profile_rule_providers_in(
     profile_id: String,
     store: ProfileStore,
-    make_client: impl FnOnce() -> Result<C, String>,
+    make_client: impl FnOnce() -> Result<RuleSetClient, String>,
 ) -> Result<(), String> {
     // An already-usable cache is a read, not a refresh. It must not prevent a
     // configuration preflight while another operation checks for fresh content.
@@ -243,15 +198,22 @@ async fn prepare_profile_rule_providers_in<C: Into<ProviderClient>>(
         .await
 }
 
-/// Refreshes every URL-carrying provider of the profile sequentially;
-/// failures are collected rather than short-circuiting.
+fn open_refresh(
+    profile_id: String,
+    core: Option<Arc<Runtime>>,
+) -> Result<RuleProviderRefresh, String> {
+    let store = ProfileStore::open().map_err(|error| error.to_string())?;
+    RuleProviderRefresh::begin(profile_id, store, || RuleSetClient::new(core))
+}
+
+/// Refreshes every URL-carrying provider of the profile sequentially,
+/// through `core`'s Core when given; failures are collected rather than
+/// short-circuiting.
 pub async fn update_all_rule_providers(
     profile_id: String,
-    runtime: Option<Arc<Runtime>>,
+    core: Option<Arc<Runtime>>,
 ) -> Result<RuleProviderRefreshReport, String> {
-    RuleProviderRefresh::open(profile_id, runtime)?
-        .update_all()
-        .await
+    open_refresh(profile_id, core)?.update_all().await
 }
 
 /// Downloads one rule provider's content, caches it next to the profile
@@ -261,9 +223,9 @@ pub async fn update_all_rule_providers(
 pub async fn update_rule_provider(
     profile_id: String,
     provider_name: String,
-    runtime: Option<Arc<Runtime>>,
+    core: Option<Arc<Runtime>>,
 ) -> Result<RuleProviderUpdateReport, String> {
-    RuleProviderRefresh::open(profile_id, runtime)?
+    open_refresh(profile_id, core)?
         .update_one(&provider_name)
         .await
 }

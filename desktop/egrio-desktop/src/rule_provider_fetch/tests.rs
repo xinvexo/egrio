@@ -59,15 +59,17 @@ async fn request_path(stream: &mut tokio::net::TcpStream) -> Option<String> {
     )
 }
 
-fn client(address: std::net::SocketAddr) -> reqwest::Client {
+fn client(address: std::net::SocketAddr) -> RuleSetClient {
     // A public-shaped test hostname passes the production URL checks while
     // this injected resolver sends only to the test-owned loopback listener.
-    reqwest::Client::builder()
-        .no_proxy()
-        .resolve("provider.egrio.test", address)
-        .timeout(std::time::Duration::from_secs(3))
-        .build()
-        .unwrap()
+    RuleSetClient::System(
+        reqwest::Client::builder()
+            .no_proxy()
+            .resolve("provider.egrio.test", address)
+            .timeout(std::time::Duration::from_secs(3))
+            .build()
+            .unwrap(),
+    )
 }
 
 #[tokio::test]
@@ -301,14 +303,13 @@ async fn ready_cache_preparation_bypasses_a_busy_refresh_but_missing_content_doe
         reqwest::Client::builder()
             .no_proxy()
             .build()
+            .map(RuleSetClient::System)
             .map_err(|error| error.to_string())
     })
     .unwrap();
-    prepare_profile_rule_providers_in::<reqwest::Client>(
-        profile_id.clone(),
-        fixture.store.clone(),
-        || panic!("a complete cache must not construct a client or acquire refresh admission"),
-    )
+    prepare_profile_rule_providers_in(profile_id.clone(), fixture.store.clone(), || {
+        panic!("a complete cache must not construct a client or acquire refresh admission")
+    })
     .await
     .unwrap();
     assert_eq!(
@@ -337,13 +338,12 @@ async fn ready_cache_preparation_bypasses_a_busy_refresh_but_missing_content_doe
             .len(),
         1
     );
-    let error = prepare_profile_rule_providers_in::<reqwest::Client>(
-        profile_id.clone(),
-        fixture.store.clone(),
-        || panic!("missing dependencies must obtain admission before constructing a client"),
-    )
-    .await
-    .unwrap_err();
+    let error =
+        prepare_profile_rule_providers_in(profile_id.clone(), fixture.store.clone(), || {
+            panic!("missing dependencies must obtain admission before constructing a client")
+        })
+        .await
+        .unwrap_err();
     assert!(error.contains("already updating"));
     assert_eq!(
         fixture

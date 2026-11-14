@@ -25,6 +25,10 @@ pub(crate) struct EffectiveConfigSnapshot {
     pub profile: RuntimeProfile,
     pub network: ProfileNetworkConfig,
     pub source_revision: String,
+    /// Rule sets the rules name are not downloaded yet. The profile then
+    /// carries no rules, only what reaches the rule sets: its nodes, groups,
+    /// choices and DNS. Only a Core start reads a profile this way.
+    pub awaiting_rule_sets: bool,
 }
 
 #[cfg(test)]
@@ -105,6 +109,7 @@ pub(crate) fn compose(
         profile,
         network: source.network.clone(),
         source_revision: source.revision.clone(),
+        awaiting_rule_sets: false,
     })
 }
 

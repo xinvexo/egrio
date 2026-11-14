@@ -282,17 +282,31 @@ impl State {
         matches!(self.active_profile, Remote::Ready(None))
     }
 
-    /// A capture switch or a profile configuration change runs; the others
-    /// wait for it.
-    pub fn downloading_rules(&self) -> bool {
+    /// The capture layers wait for rule sets that are downloading through
+    /// the chosen node.
+    pub fn downloading_rule_sets(&self) -> bool {
         self.capture
             .as_ref()
             .and_then(|status| status.preparation.as_ref())
             .is_some_and(|preparing| preparing.error.is_none())
     }
 
+    /// A capture switch or a profile configuration change runs; the others
+    /// wait for it.
     pub fn transition_pending(&self) -> bool {
         self.change.is_some()
+    }
+
+    /// The node and mode choices take no change now: one runs, or the rule
+    /// set download goes through the chosen node.
+    pub fn selection_locked(&self) -> bool {
+        self.transition_pending() || self.downloading_rule_sets()
+    }
+
+    /// The node and mode choices dim: as [`Self::selection_locked`], once
+    /// the running change is slow.
+    pub fn selection_waiting(&self) -> bool {
+        self.transition_slow() || self.downloading_rule_sets()
     }
 
     /// The running change has taken long enough that the controls waiting
