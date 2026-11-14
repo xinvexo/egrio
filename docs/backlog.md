@@ -135,7 +135,7 @@ Linux 界面尚需处理以下平台差异：控制口缺按坐标点按、输�
 `cargo xtask package` 在三个平台生成发布的安装包（见[发布](runbooks/release.md)），这些还没有验证：
 - 发布工作流还没在 GitHub 上运行过：配好 secrets 后推送一个版本的标签，四个打包作业与发布作业都成功，发布里有五个
   文件，旧版本的应用检查更新时找到它，升级后运行的是新版本。
-- macOS：在 Apple 芯片上交叉编译的 Intel DMG 在 Intel Mac 上安装、启动，经安装的应用开启 TUN。
+- macOS：在 Intel Mac 上启动已安装的应用并开启 TUN。
 - Windows：没有 Windows App Runtime 的干净系统上安装（运行时安装程序真正装上运行时），经安装的应用开启 TUN。
 - Linux：在 Ubuntu 24.04 与 26.04 的 GNOME 会话（Wayland）里装上 deb，应用网格与程序坞显示 Egrio 的图标、窗口归在它
   名下并能固定到程序坞；装着 deb 的桌面经包里的助手开启 TUN，关闭后卸载；从应用升级时 Ubuntu 的软件中心打开 deb
