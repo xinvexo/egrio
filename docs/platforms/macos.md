@@ -143,12 +143,6 @@ Core 负责 TCP/UDP 规则和遥测，显示层只消费真实 `identifier + exe
 “系统设置 > 通用 > 登录项与扩展”中允许，桌面打开该页（`openSystemSettingsLoginItems`），消息里记一条“TUN 模式需要
 批准”，允许后再次开启 TUN。注册状态不保证服务已经响应，环境检查仍以协议握手为准；服务不可达时再次注册。头文件说已注册的服务再注册返回 `kSMErrorAlreadyRegistered`，
 注册报错而状态不是未登记时都当作已登记，照常等服务应答。
-launchd 只启动与注册时签法相同的服务：载入的任务带着注册时可执行文件的签名标识、团队与签名类别（`launchctl print
-system/com.xinvexo.egrio.service` 里的 LWCR；类别取值见 Apple“Defining launch environment and library constraints”，
-3 是开发身份、6 是 Developer ID）。签名类别变化可能导致 Launch Constraint Violation、状态回到 requires-approval，
-仅重复注册不足以卸下受旧约束的任务。`SMAppService.h` 建议可执行文件变化时先注销再注册；这两步使用独立进程，
-避免复用进程内的旧登记状态。开发期间换装签名类别不同的包时，装好新包后以它的可执行文件先后
-运行 `EGRIO_MACOS_SERVICE=unregister` 与 `EGRIO_MACOS_SERVICE=register`（两个进程），再在登录项中允许。
 应用更新替换了包，launchd 却仍运行着旧服务：它在下一个连接到来时发现自己的可执行文件已被
 替换（文件标识不同于启动时），没有会话持有隧道就退出，launchd 随即从更新后的包里启动新服务，桌面在
 8 秒内重试握手。应用可执行文件以 `EGRIO_MACOS_SERVICE=status|register|unregister`
