@@ -78,13 +78,6 @@ checkpoint 要经特权服务恢复（`egrio-service` 的 `remote.rs` 向服务�
 与租约留在 `RecoveryRequired`，消息里记一条恢复失败及原因，之后每次开启捕获层先重试恢复（`desktop_runtime` 已经
 先调用 `initialize`），恢复成功前不开启任何层；在三个平台上以“留着 TUN checkpoint、服务不可达”启动核对。
 
-
-### macOS 应用的开机启动
-
-macOS 的开机启动改用应用自己的登录项（`SMAppService.mainAppService`）；登记、撤销与登录后由系统启动（静默启动时
-不开主窗口）已在 macOS 13.6 虚拟机上验证，macOS 实体环境上还没有。完成标准：签名的应用包在 macOS 实体环境上登录后启动，
-静默启动打开时不显示主窗口，并写入 macOS 的验证状态。
-
 ### 对话框里的错误移动字段
 
 添加配置的对话框在说明文字的位置给出失败原因，规则对话框在按钮行里给出；原因与说明的行数不同时，下面的字段
