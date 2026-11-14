@@ -380,7 +380,11 @@ pub async fn update_all_rule_providers(
     runtime: &DesktopRuntime,
     profile_id: String,
 ) -> Result<crate::rule_provider_fetch::RuleProviderRefreshReport, String> {
-    let report = rule_provider_fetch::update_all_rule_providers(profile_id.clone()).await?;
+    let report = rule_provider_fetch::update_all_rule_providers(
+        profile_id.clone(),
+        runtime.download_runtime(),
+    )
+    .await?;
     // Rechecking unchanged content or failing every download does not change
     // effective routing and must not tear down the running connections.
     if !report.updated.is_empty() {
@@ -398,8 +402,12 @@ pub async fn update_rule_provider(
     profile_id: String,
     provider_name: String,
 ) -> Result<crate::rule_provider_fetch::RuleProviderUpdateReport, String> {
-    let report =
-        rule_provider_fetch::update_rule_provider(profile_id.clone(), provider_name).await?;
+    let report = rule_provider_fetch::update_rule_provider(
+        profile_id.clone(),
+        provider_name,
+        runtime.download_runtime(),
+    )
+    .await?;
     if report.changed {
         propagation_result(propagate_if_active_profile(runtime, &profile_id).await).map_err(
             |error| format!("rule provider was cached but Runtime application failed: {error}"),

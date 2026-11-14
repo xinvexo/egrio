@@ -940,6 +940,10 @@ dependencies = [
  "egrio-platform-windows",
  "egrio-runtime",
  "egrio-sdk",
+ "http-body-util",
+ "hyper",
+ "hyper-rustls",
+ "hyper-util",
  "libc",
  "log",
  "objc2",
@@ -954,6 +958,7 @@ dependencies = [
  "thiserror 2.0.21",
  "time",
  "tokio",
+ "tower-service",
  "uuid",
 ]
 
@@ -1866,6 +1871,7 @@ dependencies = [
  "hyper",
  "hyper-util",
  "rustls",
+ "rustls-platform-verifier",
  "tokio",
  "tokio-rustls",
  "tower-service",

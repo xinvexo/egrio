@@ -68,6 +68,7 @@ pub use capture::{
     validate_fake_ip_capture_addresses, NativeCoreCaptureConfig, NativeCoreDnsHijackConfig,
     NativeCoreDnsHijackMode, NativeCoreInterfaceNetwork,
 };
+pub use device::CoreOutboundStream;
 pub use device::{
     ConnectionCutoverReport, CorePolicyApplyReport, CorePolicyState, CorePolicyUpdate,
     CoreStartInputs, CoreStateAudit, KillSessionsReport, NativeCoreDevice,

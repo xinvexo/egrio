@@ -65,10 +65,15 @@ impl Runtime {
         let device = {
             let _operation = self.operation.lock().await;
             let state = self.status().state;
-            if self.core.status().state == egrio_core::NativeCoreState::Running {
+            if state == RuntimeState::Preparing
+                || self.core.status().state == egrio_core::NativeCoreState::Running
+            {
                 if !matches!(
                     state,
-                    RuntimeState::Created | RuntimeState::Running | RuntimeState::Stopped
+                    RuntimeState::Created
+                        | RuntimeState::Preparing
+                        | RuntimeState::Running
+                        | RuntimeState::Stopped
                 ) {
                     return Err("outbound probe requires a settled running Runtime".into());
                 }
@@ -157,6 +162,9 @@ impl Runtime {
             && device.is_none()
         {
             return Ok(false);
+        }
+        if state == RuntimeState::Preparing {
+            return Ok(true);
         }
         if state != RuntimeState::Running {
             return Err(format!(

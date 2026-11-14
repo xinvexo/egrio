@@ -8,6 +8,9 @@ use reqwest::redirect::Policy;
 use reqwest::Url;
 use std::time::Duration;
 
+mod core;
+pub(crate) use core::CoreDownloadClient;
+
 /// Identifies Egrio and requests the supported Clash YAML dialect from
 /// subscription services. The `(clash.meta)` compatibility marker selects
 /// a configuration response rather than a list of share links.

@@ -20,6 +20,8 @@ pub struct CaptureStatus {
     /// Why TUN mode stopped working on its own (its platform session ended),
     /// while it is being restored or after it could not be.
     pub tun_interruption: Option<String>,
+    /// The Core is downloading required data before opening ordinary ingress.
+    pub preparation: Option<crate::runtime::CorePreparation>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -31,6 +33,8 @@ pub struct CaptureLayersReport {
     /// Set instead of `error` while TUN mode's environment awaits the user's
     /// approval; no layer changed.
     pub approval_required: bool,
+    /// Accepted, but ordinary ingress is waiting for required configuration data.
+    pub preparation: Option<crate::runtime::CorePreparation>,
 }
 
 pub async fn capture_status(runtime: &DesktopRuntime) -> CaptureStatus {
@@ -41,6 +45,7 @@ pub async fn capture_status(runtime: &DesktopRuntime) -> CaptureStatus {
         // A running TUN layer proves its environment.
         tun_environment_ready: layers.tun || tun_environment::is_ready().await,
         tun_interruption: runtime.tun_interruption(),
+        preparation: runtime.core_preparation(),
     }
 }
 
@@ -55,7 +60,7 @@ pub async fn set_capture_layer(
 ) -> Result<CaptureLayersReport, String> {
     let report =
         change_capture_layers(runtime.clone(), move |current| current.with(layer, enabled)).await?;
-    remember(report.layers).await;
+    remember(runtime.requested_capture_layers()).await;
     Ok(report)
 }
 
@@ -67,7 +72,7 @@ pub async fn toggle_capture_layer(
         current.with(layer, !current.get(layer))
     })
     .await?;
-    remember(report.layers).await;
+    remember(runtime.requested_capture_layers()).await;
     Ok(report)
 }
 
@@ -129,6 +134,7 @@ pub async fn restore_capture_layers(
                 layers: runtime.capture_layers(),
                 error: None,
                 approval_required: false,
+                preparation: runtime.core_preparation(),
             },
             tun_not_ready,
         });
@@ -161,13 +167,14 @@ async fn change_capture_layers(
         let _notify = crate::events::notify_on_return();
         let _transition = runtime.begin_user_transition().await;
         let current = runtime.capture_layers();
-        let target = target(current);
+        let target = target(runtime.requested_capture_layers());
         let requested =
             serde_json::json!({ "system_proxy": target.system_proxy, "tun": target.tun });
         log::info!(target: "network", "capture-change-requested {requested}");
         let report = switch_layers(&runtime, current, target).await;
         let finished = serde_json::json!({
-            "ok": report.error.is_none() && !report.approval_required,
+            "ok": report.error.is_none() && !report.approval_required && report.preparation.is_none(),
+            "preparing": report.preparation.is_some(),
             "system_proxy_active": report.layers.system_proxy,
             "tun_active": report.layers.tun,
             "error": report.error,
@@ -184,11 +191,12 @@ async fn switch_layers(
     target: CaptureLayers,
 ) -> CaptureLayersReport {
     let unchanged = |error: Option<String>, approval_required: bool| CaptureLayersReport {
-        layers: current,
+        layers: runtime.capture_layers(),
         error,
         approval_required,
+        preparation: runtime.core_preparation(),
     };
-    if target == current {
+    if target == current && runtime.core_preparation().is_none() {
         return unchanged(None, false);
     }
     if !capture_support().covers(target) {
@@ -218,6 +226,7 @@ async fn switch_layers(
         layers: runtime.capture_layers(),
         error,
         approval_required: false,
+        preparation: runtime.core_preparation(),
     }
 }
 

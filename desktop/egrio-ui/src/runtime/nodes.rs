@@ -156,7 +156,7 @@ impl<B: Backend> Ui<B> {
     /// Chooses a Select group's member, as the page or the tray asks; the
     /// member shows chosen from the click on.
     pub(super) fn select_member(&mut self, group_id: String, member: String) {
-        if self.state.transition_pending() {
+        if self.state.transition_pending() || self.state.downloading_rules() {
             return;
         }
         let Some(inventory) = self.current_inventory() else {
@@ -184,7 +184,7 @@ impl<B: Backend> Ui<B> {
     }
 
     fn set_global_outbound(&mut self, outbound: String) {
-        if self.state.transition_pending() {
+        if self.state.transition_pending() || self.state.downloading_rules() {
             return;
         }
         let Some(profile) = self.state.active_profile.ready().and_then(Option::as_ref) else {

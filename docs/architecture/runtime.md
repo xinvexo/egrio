@@ -65,6 +65,17 @@ endpoint 可以引用该 generation 实际绑定的 `CoreListener`。宿主通�
 listener，再解析依赖 listener 的平台设置，之后才取得租约、预写 checkpoint 和调用 OS adapter，
 因此 listener bind 失败不会留下租约、checkpoint 或平台 mutation。
 
+需要获取外部配置数据的宿主通过 `Runtime::prepare_core` 先进入 `Preparing`：由 Runtime 创建唯一
+Core device 与 generation，但不绑定普通 TCP/DNS 监听、不取得平台租约或写入 checkpoint。
+`connect_outbound` 在该代次上提供宿主内部出站，网络等待不占用生命周期操作锁。宿主准备完成后调用
+`activate_prepared_core`，携带原 generation 和完整 profile，在同一 device 上发布配置，然后进入
+普通监听与平台资源的 start 事务；普通 `start` 不能绕过尚未完成的准备。输入已完整的宿主直接 start，
+内部复用同一条 device 创建与监听启用路径。
+
+准备失败保持该 Core 和 `Preparing`，错误由宿主记录；准备进行中拒绝策略配置，失败后可修改选择并
+重新准备。停止准备直接关闭 Runtime 拥有的 Core，无平台资源需要恢复。宿主停止或切换代次后，旧
+generation 的激活请求不能启动新的流量入口。
+
 `EgrioSdk` 创建的 Runtime 把事务（start、reload、stop、配置操作、quiesce）派到 SDK 的第一个 Core 执行器，
 捕获的每个队列的包泵各派到一个执行器（`Runtime::with_executors`）。每个执行器是只有一个工作线程的 Tokio
 多线程运行时（线程名 `egrio-core-<序号>`）：Core 的控制工作与一个队列的包泵派生的任务（relay、
@@ -92,7 +103,7 @@ reload，继承当前 Core spec，不重新加载监听设置。字段来源、�
 应用设置。
 
 数据面遥测来自同一 Runtime Core，只在实例已提交为 `Running` 时通过
-`Runtime::core_traffic_telemetry_snapshot` 暴露，宿主不会把 Created、Reloading、Degraded 或
+`Runtime::core_traffic_telemetry_snapshot` 暴露，宿主不会把 Created、Preparing、Reloading、Degraded 或
 Stopping 的数据面呈现为活动实例。轮询的宿主改用 `core_traffic_telemetry_since` 并保存返回的
 `TelemetryCursor`：每次只取活动连接与游标之后的结束记录（session registry 为每条结束记录编号，
 最近 512 条），游标属于另一个 Core 代次时从头开始，避免每次重建整个结束记录环。listener 与 packet ingress 共享同一 Core session

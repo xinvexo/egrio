@@ -747,6 +747,10 @@ impl NativeCoreRuntime {
         &self.sessions.group_state
     }
 
+    pub(crate) fn global_outbound(&self) -> &str {
+        &self.snapshot.global_outbound
+    }
+
     pub(crate) fn session_registry(&self) -> &SessionRegistry {
         &self.sessions.registry
     }
@@ -890,7 +894,7 @@ pub(crate) async fn open_outbound_connection_with_budget(
     .await
 }
 
-async fn open_resolved_outbound_connection_with_budget(
+pub(crate) async fn open_resolved_outbound_connection_with_budget(
     runtime: &NativeCoreRuntime,
     target: &ConnectTarget,
     resolved: &ResolvedOutbound<'_>,

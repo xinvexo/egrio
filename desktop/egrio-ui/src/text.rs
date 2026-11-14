@@ -36,6 +36,9 @@ macro_rules! strings {
 }
 
 strings! {
+    preparing_rules => "正在准备规则集，尚未接管流量", "Preparing rule sets; capture has not started";
+    preparation_failed => "规则准备未完成", "Rule preparation did not finish";
+    retry_preparation => "重试", "Retry";
     nav_activity => "活动", "Activity";
     nav_nodes => "节点", "Nodes";
     nav_profiles => "配置", "Profiles";

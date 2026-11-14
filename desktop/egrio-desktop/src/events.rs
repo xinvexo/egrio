@@ -16,6 +16,8 @@ use tokio::sync::broadcast::error::RecvError;
 pub enum DesktopEvent {
     /// A Runtime, capture or Core state transition landed.
     NativeStateChanged,
+    /// Required configuration data could not be prepared or activated.
+    CorePreparationFailed { message: String },
     /// Profile contents, the active profile, or a persisted policy-group
     /// choice changed.
     ProfilesChanged,
@@ -92,6 +94,10 @@ pub fn subscribe() -> Subscription {
 fn publish(event: DesktopEvent) {
     // No subscriber is not an error: headless paths publish to no one.
     let _ = CHANNEL.send(event);
+}
+
+pub fn notify_core_preparation_failed(message: String) {
+    publish(DesktopEvent::CorePreparationFailed { message });
 }
 
 pub fn notify_native_state_changed() {

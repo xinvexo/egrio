@@ -33,6 +33,11 @@ auto-launch = "0.6"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 directories = "6.0.0"
 log = { version = "0.4", features = ["std"] }
+http-body-util = "0.1"
+hyper = { version = "1", features = ["client", "http1", "http2"] }
+hyper-util = { version = "0.1", features = ["client-legacy", "http1", "http2", "tokio"] }
+hyper-rustls = { version = "0.27", default-features = false, features = ["aws-lc-rs", "rustls-platform-verifier", "http1", "http2", "tls12"] }
+tower-service = "0.3"
 reqwest = { version = "0.13.4", default-features = false, features = ["json", "rustls", "system-proxy", "charset", "http2"] }
 serde = { workspace = true }
 serde_json = { workspace = true }

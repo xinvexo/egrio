@@ -109,6 +109,8 @@ impl RuntimeGeneration {
 #[serde(rename_all = "kebab-case")]
 pub enum RuntimeState {
     Created,
+    /// Core outbounds are usable; ordinary listeners and platform capture are off.
+    Preparing,
     Starting,
     Running,
     Reloading,

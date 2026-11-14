@@ -137,6 +137,7 @@ pub fn view(state: &State) -> TrayView {
     let text = state.text();
     let profile = state.active_profile.ready().and_then(Option::as_ref);
     let busy = state.transition_pending();
+    let selection_busy = busy || state.downloading_rules();
     let mut items = vec![
         command(text.tray_show(), TrayAction::ShowMainWindow, true, false),
         TrayItem::Separator,
@@ -165,7 +166,7 @@ pub fn view(state: &State) -> TrayView {
         .unwrap_or_default();
     items.push(TrayItem::Submenu {
         label: text.tray_outbound_mode().into(),
-        enabled: !busy && profile.is_some(),
+        enabled: !selection_busy && profile.is_some(),
         items: modes,
     });
     items.push(TrayItem::Separator);
@@ -179,7 +180,7 @@ pub fn view(state: &State) -> TrayView {
     if let Some(inventory) = inventory.filter(|inventory| !inventory.inventory.groups.is_empty()) {
         let nodes = Nodes::of(state, inventory, text);
         for group in &inventory.inventory.groups {
-            items.push(group_menu(state, inventory, &nodes, group, busy));
+            items.push(group_menu(state, inventory, &nodes, group, selection_busy));
         }
         items.push(TrayItem::Separator);
     }
@@ -210,7 +211,7 @@ pub fn view(state: &State) -> TrayView {
     items.push(command(text.tray_quit(), TrayAction::Quit, true, false));
     TrayView {
         tooltip: "Egrio".into(),
-        connected: state.layer_on(CaptureLayer::SystemProxy) || state.layer_on(CaptureLayer::Tun),
+        connected: status.is_some_and(|status| status.layers.any()),
         items,
     }
 }

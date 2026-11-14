@@ -13,6 +13,7 @@ mod core_control;
 mod health;
 mod outcome;
 mod packet;
+mod preparation;
 mod reload;
 mod start;
 mod stop;

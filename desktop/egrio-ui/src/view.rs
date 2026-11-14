@@ -68,11 +68,18 @@ fn capture_toggle(state: &State, layer: CaptureLayer) -> CaptureToggle {
     let interruption = (layer == CaptureLayer::Tun)
         .then(|| status.and_then(|status| status.tun_interruption.clone()))
         .flatten();
+    let preparing = status
+        .and_then(|status| status.preparation.as_ref())
+        .filter(|preparing| preparing.layers.get(layer));
     let needs_profile = !on && state.needs_profile();
     CaptureToggle {
         label: label.into(),
         on,
         state: if state.transition_slow() && state.changing_layers().get(layer) {
+            ToggleState::Pending
+        } else if preparing.is_some_and(|preparing| preparing.error.is_some()) {
+            ToggleState::Warning
+        } else if preparing.is_some() {
             ToggleState::Pending
         } else if interruption.is_some() {
             ToggleState::Warning
@@ -80,9 +87,18 @@ fn capture_toggle(state: &State, layer: CaptureLayer) -> CaptureToggle {
             ToggleState::Idle
         },
         enabled: supported && !needs_profile && !state.transition_slow(),
-        tooltip: interruption
-            .map(|reason| text.tun_interrupted_tooltip(&reason))
-            .or_else(|| needs_profile.then(|| text.needs_profile().into())),
+        tooltip: preparing
+            .map(|preparing| {
+                preparing
+                    .error
+                    .clone()
+                    .unwrap_or_else(|| text.preparing_rules().into())
+            })
+            .or_else(|| {
+                interruption
+                    .map(|reason| text.tun_interrupted_tooltip(&reason))
+                    .or_else(|| needs_profile.then(|| text.needs_profile().into()))
+            }),
     }
 }
 
@@ -108,7 +124,7 @@ fn toolbar(state: &State) -> ToolbarView {
                 TrafficPolicyMode::Global => 1,
                 TrafficPolicyMode::Direct => 2,
             }),
-            enabled: profile.is_some() && !state.transition_slow(),
+            enabled: profile.is_some() && !state.transition_slow() && !state.downloading_rules(),
             tooltip: state.needs_profile().then(|| text.needs_profile().into()),
         },
         messages: MessagesButton {
@@ -297,6 +313,7 @@ mod tests {
             },
             tun_environment_ready: true,
             tun_interruption: None,
+            preparation: None,
         });
         state
     }
@@ -307,6 +324,35 @@ mod tests {
             id: 1,
             slow,
         });
+    }
+
+    #[test]
+    fn rule_download_locks_selections_but_keeps_the_capture_stop_available() {
+        let mut state = with_profile();
+        state.capture.as_mut().unwrap().preparation =
+            Some(egrio_desktop::runtime::CorePreparation {
+                layers: CaptureLayers::NONE.with(CaptureLayer::Tun, true),
+                error: None,
+            });
+        let preparing = toolbar(&state);
+        assert!(preparing.tun.on && preparing.tun.enabled);
+        assert_eq!(preparing.tun.state, ToggleState::Pending);
+        assert!(!preparing.policy.enabled);
+        assert!(state.downloading_rules());
+        state
+            .capture
+            .as_mut()
+            .unwrap()
+            .preparation
+            .as_mut()
+            .unwrap()
+            .error = Some("download failed".into());
+        let failed = toolbar(&state);
+        assert_eq!(failed.tun.state, ToggleState::Warning);
+        assert!(
+            failed.policy.enabled,
+            "selection can change after the download has ended"
+        );
     }
 
     #[test]

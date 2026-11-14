@@ -284,6 +284,13 @@ impl State {
 
     /// A capture switch or a profile configuration change runs; the others
     /// wait for it.
+    pub fn downloading_rules(&self) -> bool {
+        self.capture
+            .as_ref()
+            .and_then(|status| status.preparation.as_ref())
+            .is_some_and(|preparing| preparing.error.is_none())
+    }
+
     pub fn transition_pending(&self) -> bool {
         self.change.is_some()
     }
@@ -310,10 +317,13 @@ impl State {
     /// Whether the layer's switches show it on: as the status has it, or as
     /// a switch or restore changing it asks.
     pub fn layer_on(&self, layer: CaptureLayer) -> bool {
-        let on = self
-            .capture
-            .as_ref()
-            .is_some_and(|status| status.layers.get(layer));
+        let on = self.capture.as_ref().is_some_and(|status| {
+            status
+                .preparation
+                .as_ref()
+                .map_or(status.layers, |preparing| preparing.layers)
+                .get(layer)
+        });
         match self.changing() {
             Some(Change::Capture {
                 layer: changing,

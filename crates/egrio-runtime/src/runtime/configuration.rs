@@ -184,7 +184,10 @@ impl Runtime {
         self.configuration_events.subscribe()
     }
     pub fn effective_core_policy(&self) -> Option<CorePolicyState> {
-        if self.status().state != RuntimeState::Running {
+        if !matches!(
+            self.status().state,
+            RuntimeState::Preparing | RuntimeState::Running
+        ) {
             return None;
         }
         self.core
@@ -283,6 +286,13 @@ impl Runtime {
             return report.fail(
                 ConfigurationPhase::Rejected,
                 "Runtime/Core generation changed while configuration was queued",
+            );
+        }
+        let status = self.status();
+        if status.state == RuntimeState::Preparing && status.degradation_error.is_none() {
+            return report.fail(
+                ConfigurationPhase::Rejected,
+                "Core preparation is in progress",
             );
         }
         if let Err(error) = self.configuration_update_admission() {

@@ -65,13 +65,14 @@ pub struct RuntimeCore {
 pub struct RuntimeCoreEnsureReport {
     pub status: NativeCoreStatus,
     pub generation: RuntimeCoreGeneration,
-    /// True only when this call started the current Core generation. This is
-    /// origin metadata for surrounding session cleanup, not a consumer lease.
+    /// True when this call opened the generation's ordinary listeners. The
+    /// surrounding start transaction owns cleanup if activation fails.
     pub started_by_call: bool,
 }
 
 struct CoreStartRollback<'a> {
-    session: &'a CoreSessionManager,
+    owner: &'a RuntimeCore,
+    lifecycle: &'a mut RuntimeCoreLifecycle,
     device: NativeCoreDevice,
     armed: bool,
 }
@@ -85,7 +86,9 @@ impl CoreStartRollback<'_> {
 impl Drop for CoreStartRollback<'_> {
     fn drop(&mut self) {
         if self.armed {
-            self.session.stop();
+            self.owner.session.stop();
+            self.lifecycle.active_generation = None;
+            self.owner.replace_device_slot(None);
             // The listener session does not own the device
             // (`start_on_device`), so a failed start must close it here or
             // its TCP engine and probe loop would leak past the rollback.
@@ -208,18 +211,11 @@ impl RuntimeCore {
             });
         }
 
-        lifecycle.active_generation = None;
-        self.close_device_slot();
-        let inputs = start_inputs()?;
-        inputs.capture.validate()?;
-        lifecycle.next_generation = lifecycle
-            .next_generation
-            .checked_add(1)
-            .ok_or_else(|| "Runtime Core generation counter exhausted".to_string())?;
-        let generation = RuntimeCoreGeneration(lifecycle.next_generation);
-        let device = NativeCoreDevice::from_start_inputs(inputs);
+        let generation = self.prepare_locked(start_inputs, &mut lifecycle)?;
+        let device = self.packet_device().expect("prepared Core device");
         let mut rollback = CoreStartRollback {
-            session: &self.session,
+            owner: self,
+            lifecycle: &mut lifecycle,
             device: device.clone(),
             armed: true,
         };
@@ -228,18 +224,46 @@ impl RuntimeCore {
             .start_on_device(device.clone(), listen_addr, dns_listen_addr, port_fallback)
             .await?;
         validate_started_status(&status)?;
-        // The listener session does not own the device, so the probe
-        // scheduler is lit here; the spawn is idempotent per device, so a
-        // packet data plane serving the same device later is a no-op spawn.
-        drop(device.spawn_health_probe_loop());
-        lifecycle.active_generation = Some(generation);
-        self.replace_device_slot(Some(device));
         rollback.disarm();
         Ok(RuntimeCoreEnsureReport {
             status,
             generation,
             started_by_call: true,
         })
+    }
+
+    /// Creates the generation's device without opening ordinary listeners.
+    pub async fn prepare_with<F>(&self, start_inputs: F) -> Result<RuntimeCoreGeneration, String>
+    where
+        F: FnOnce() -> Result<CoreStartInputs, String>,
+    {
+        let mut lifecycle = self.lifecycle.lock().await;
+        self.prepare_locked(start_inputs, &mut lifecycle)
+    }
+
+    fn prepare_locked<F>(
+        &self,
+        start_inputs: F,
+        lifecycle: &mut RuntimeCoreLifecycle,
+    ) -> Result<RuntimeCoreGeneration, String>
+    where
+        F: FnOnce() -> Result<CoreStartInputs, String>,
+    {
+        if let Some(generation) = lifecycle.active_generation {
+            return Ok(generation);
+        }
+        let inputs = start_inputs()?;
+        inputs.capture.validate()?;
+        lifecycle.next_generation = lifecycle
+            .next_generation
+            .checked_add(1)
+            .ok_or("Runtime Core generation counter exhausted")?;
+        let generation = RuntimeCoreGeneration(lifecycle.next_generation);
+        let device = NativeCoreDevice::from_start_inputs(inputs);
+        drop(device.spawn_health_probe_loop());
+        self.replace_device_slot(Some(device));
+        lifecycle.active_generation = Some(generation);
+        Ok(generation)
     }
 
     fn replace_device_slot(&self, device: Option<NativeCoreDevice>) {

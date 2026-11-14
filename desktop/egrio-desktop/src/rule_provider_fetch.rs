@@ -6,9 +6,12 @@ use time::OffsetDateTime;
 
 use crate::profile_source::parse_rule_provider_entries;
 use crate::profile_store::{ProfileStore, SavedRuleProvider};
+use crate::remote_fetch::CoreDownloadClient;
 use crate::remote_fetch::{
     read_limited_body, remote_fetch_client, request_error, validate_remote_url,
 };
+use egrio_runtime::Runtime;
+use std::sync::Arc;
 
 /// Outcome of the rules-page "refresh everything" button: which providers
 /// got fresh content and which failed (name plus error, so one bad mirror
@@ -59,29 +62,47 @@ impl Drop for RefreshPermit {
 struct RuleProviderRefresh {
     profile_id: String,
     store: ProfileStore,
-    client: reqwest::Client,
+    client: ProviderClient,
     _permit: RefreshPermit,
 }
 
+enum ProviderClient {
+    Network(reqwest::Client),
+    Core(CoreDownloadClient),
+}
+impl From<reqwest::Client> for ProviderClient {
+    fn from(client: reqwest::Client) -> Self {
+        Self::Network(client)
+    }
+}
+impl From<CoreDownloadClient> for ProviderClient {
+    fn from(client: CoreDownloadClient) -> Self {
+        Self::Core(client)
+    }
+}
+
 impl RuleProviderRefresh {
-    fn open(profile_id: String) -> Result<Self, String> {
+    fn open(profile_id: String, runtime: Option<Arc<Runtime>>) -> Result<Self, String> {
         Self::begin(
             profile_id,
             ProfileStore::open().map_err(|error| error.to_string())?,
-            remote_fetch_client,
+            || match runtime {
+                Some(runtime) => CoreDownloadClient::new(runtime).map(ProviderClient::Core),
+                None => remote_fetch_client().map(ProviderClient::Network),
+            },
         )
     }
 
-    fn begin(
+    fn begin<C: Into<ProviderClient>>(
         profile_id: String,
         store: ProfileStore,
-        make_client: impl FnOnce() -> Result<reqwest::Client, String>,
+        make_client: impl FnOnce() -> Result<C, String>,
     ) -> Result<Self, String> {
         let permit = RefreshPermit::acquire(&profile_id)?;
         Ok(Self {
             profile_id,
             store,
-            client: make_client()?,
+            client: make_client()?.into(),
             _permit: permit,
         })
     }
@@ -150,20 +171,24 @@ impl RuleProviderRefresh {
             ));
         };
         let provider_url = validate_remote_url(url)?;
-        let response = self
-            .client
-            .get(provider_url)
-            .header(USER_AGENT, "Egrio/0.1")
-            .send()
-            .await
-            .map_err(request_error)?;
-        if !response.status().is_success() {
-            return Err(format!(
-                "rule provider fetch failed: HTTP {}",
-                response.status().as_u16()
-            ));
-        }
-        let body = read_limited_body(response).await?;
+        let body = match &self.client {
+            ProviderClient::Core(client) => client.get(provider_url, "Egrio/0.1").await?,
+            ProviderClient::Network(client) => {
+                let response = client
+                    .get(provider_url)
+                    .header(USER_AGENT, "Egrio/0.1")
+                    .send()
+                    .await
+                    .map_err(request_error)?;
+                if !response.status().is_success() {
+                    return Err(format!(
+                        "rule provider fetch failed: HTTP {}",
+                        response.status().as_u16()
+                    ));
+                }
+                read_limited_body(response).await?
+            }
+        };
         let entries = parse_rule_provider_entries(&body);
         if entries.is_empty() {
             return Err(format!(
@@ -187,21 +212,18 @@ impl RuleProviderRefresh {
     }
 }
 
-/// Prepare the actual rule dependencies before a Core start. Existing caches
-/// whose descriptors still match are reused; unrelated providers are not fetched.
-pub async fn prepare_profile_rule_providers(profile_id: String) -> Result<(), String> {
-    prepare_profile_rule_providers_in(
-        profile_id,
-        ProfileStore::open().map_err(|error| error.to_string())?,
-        remote_fetch_client,
-    )
-    .await
+pub(crate) async fn prepare_via_core(
+    profile_id: String,
+    runtime: Arc<Runtime>,
+) -> Result<(), String> {
+    let store = ProfileStore::open().map_err(|error| error.to_string())?;
+    prepare_profile_rule_providers_in(profile_id, store, || CoreDownloadClient::new(runtime)).await
 }
 
-async fn prepare_profile_rule_providers_in(
+async fn prepare_profile_rule_providers_in<C: Into<ProviderClient>>(
     profile_id: String,
     store: ProfileStore,
-    make_client: impl FnOnce() -> Result<reqwest::Client, String>,
+    make_client: impl FnOnce() -> Result<C, String>,
 ) -> Result<(), String> {
     // An already-usable cache is a read, not a refresh. It must not prevent a
     // configuration preflight while another operation checks for fresh content.
@@ -225,8 +247,11 @@ async fn prepare_profile_rule_providers_in(
 /// failures are collected rather than short-circuiting.
 pub async fn update_all_rule_providers(
     profile_id: String,
+    runtime: Option<Arc<Runtime>>,
 ) -> Result<RuleProviderRefreshReport, String> {
-    RuleProviderRefresh::open(profile_id)?.update_all().await
+    RuleProviderRefresh::open(profile_id, runtime)?
+        .update_all()
+        .await
 }
 
 /// Downloads one rule provider's content, caches it next to the profile
@@ -236,8 +261,9 @@ pub async fn update_all_rule_providers(
 pub async fn update_rule_provider(
     profile_id: String,
     provider_name: String,
+    runtime: Option<Arc<Runtime>>,
 ) -> Result<RuleProviderUpdateReport, String> {
-    RuleProviderRefresh::open(profile_id)?
+    RuleProviderRefresh::open(profile_id, runtime)?
         .update_one(&provider_name)
         .await
 }

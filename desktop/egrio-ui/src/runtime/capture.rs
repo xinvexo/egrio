@@ -80,6 +80,29 @@ impl<B: Backend> Ui<B> {
         });
     }
 
+    pub(super) fn retry_preparation(&mut self) {
+        if self.state.transition_pending() {
+            return;
+        }
+        let Some(preparing) = self
+            .state
+            .capture
+            .as_ref()
+            .and_then(|status| status.preparation.as_ref())
+        else {
+            return;
+        };
+        let layer = if preparing.layers.system_proxy {
+            CaptureLayer::SystemProxy
+        } else {
+            CaptureLayer::Tun
+        };
+        let runtime = self.desktop.runtime.clone();
+        self.begin_change(Change::Capture { layer, enabled: true }, async move {
+            Msg::CaptureChanged(capture::set_capture_layer(&runtime, layer, true).await)
+        });
+    }
+
     /// A capture switch ended: its switches show the layers it left at
     /// once, and the status read next confirms them.
     pub(super) fn capture_changed(&mut self, result: Result<capture::CaptureLayersReport, String>) {
@@ -103,6 +126,7 @@ impl<B: Backend> Ui<B> {
             Ok(report) => {
                 if let Some(status) = &mut self.state.capture {
                     status.layers = report.layers;
+                    status.preparation = report.preparation;
                 }
                 if report.approval_required {
                     self.note(Level::Warning, source, text.tun_approval(), None);
@@ -145,6 +169,9 @@ impl<B: Backend> Ui<B> {
                 if restore.tun_not_ready {
                     self.note(Level::Warning, Source::Tun, text.tun_not_restored(), None);
                 }
+                if let Some(status) = &mut self.state.capture {
+                    status.preparation = restore.report.preparation;
+                }
                 (Some(restore.report.layers), restore.report.error)
             }
             Err(error) => (None, Some(error)),
@@ -172,7 +199,7 @@ impl<B: Backend> Ui<B> {
     }
 
     pub(super) fn set_traffic_policy(&mut self, mode: TrafficPolicyMode) {
-        if self.state.transition_pending() {
+        if self.state.transition_pending() || self.state.downloading_rules() {
             return;
         }
         let Some(profile) = self.state.active_profile.ready().and_then(Option::as_ref) else {

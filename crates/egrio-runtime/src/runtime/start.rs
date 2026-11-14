@@ -6,7 +6,7 @@ impl Runtime {
     pub async fn start(self: &Arc<Self>) -> Result<RuntimeStartReport, RuntimeStartError> {
         let runtime = self.clone();
         self.spawn(async move {
-            let report = runtime.start_transaction(None).await?;
+            let report = runtime.start_transaction(None, None).await?;
             // Attach the disconnect watcher inside the spawned task, not in the
             // caller's future: the transaction runs detached precisely so a
             // dropped caller future cannot corrupt it, and a runtime committed
@@ -27,7 +27,7 @@ impl Runtime {
     ) -> Result<RuntimeStartReport, RuntimeStartError> {
         let runtime = self.clone();
         self.spawn(async move {
-            let report = runtime.start_transaction(Some(spec)).await?;
+            let report = runtime.start_transaction(Some(spec), None).await?;
             runtime.sync_health_watcher().await;
             Ok(report)
         })
@@ -76,9 +76,26 @@ impl Runtime {
     pub(super) async fn start_transaction(
         self: &Arc<Self>,
         requested_spec: Option<RuntimeSpec>,
+        prepared: Option<(RuntimeCoreGeneration, egrio_core::RuntimeProfile)>,
     ) -> Result<RuntimeStartReport, RuntimeStartError> {
         let _operation = self.operation.lock().await;
         self.clear_session_loss();
+        let activating_prepared = prepared.is_some();
+        if self.status().state == RuntimeState::Preparing && !activating_prepared {
+            return Err(RuntimeStartError::InvalidState(RuntimeState::Preparing));
+        }
+        if let Some((generation, profile)) = prepared {
+            let status = self.domain_status();
+            if status.runtime.state != RuntimeState::Preparing
+                || status.core.map(|core| core.generation) != Some(generation)
+            {
+                return Err(RuntimeStartError::InvalidState(status.runtime.state));
+            }
+            self.core
+                .packet_device()
+                .expect("prepared Core device")
+                .apply_profile(&profile);
+        }
         if let Some(spec) = requested_spec.as_ref() {
             spec.validate()
                 .map_err(|error| RuntimeStartError::UnsupportedSpec(error.to_string()))?;
@@ -125,7 +142,10 @@ impl Runtime {
                     resources,
                 });
             }
-            if control.state != RuntimeState::Created && control.state != RuntimeState::Stopped {
+            if !matches!(
+                control.state,
+                RuntimeState::Created | RuntimeState::Stopped | RuntimeState::Preparing
+            ) {
                 return Err(RuntimeStartError::InvalidState(control.state));
             }
             if let Some(spec) = requested_spec {

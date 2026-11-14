@@ -304,9 +304,11 @@ async fn ready_cache_preparation_bypasses_a_busy_refresh_but_missing_content_doe
             .map_err(|error| error.to_string())
     })
     .unwrap();
-    prepare_profile_rule_providers_in(profile_id.clone(), fixture.store.clone(), || {
-        panic!("a complete cache must not construct a client or acquire refresh admission")
-    })
+    prepare_profile_rule_providers_in::<reqwest::Client>(
+        profile_id.clone(),
+        fixture.store.clone(),
+        || panic!("a complete cache must not construct a client or acquire refresh admission"),
+    )
     .await
     .unwrap();
     assert_eq!(
@@ -335,12 +337,13 @@ async fn ready_cache_preparation_bypasses_a_busy_refresh_but_missing_content_doe
             .len(),
         1
     );
-    let error =
-        prepare_profile_rule_providers_in(profile_id.clone(), fixture.store.clone(), || {
-            panic!("missing dependencies must obtain admission before constructing a client")
-        })
-        .await
-        .unwrap_err();
+    let error = prepare_profile_rule_providers_in::<reqwest::Client>(
+        profile_id.clone(),
+        fixture.store.clone(),
+        || panic!("missing dependencies must obtain admission before constructing a client"),
+    )
+    .await
+    .unwrap_err();
     assert!(error.contains("already updating"));
     assert_eq!(
         fixture
@@ -352,3 +355,5 @@ async fn ready_cache_preparation_bypasses_a_busy_refresh_but_missing_content_doe
     );
     drop(refresh);
 }
+
+mod startup;

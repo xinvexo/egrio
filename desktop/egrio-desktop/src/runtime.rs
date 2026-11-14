@@ -12,6 +12,8 @@ mod linux;
 #[cfg(target_os = "macos")]
 mod macos;
 mod node_probe;
+mod rule_preparation;
+pub use rule_preparation::CorePreparation;
 #[cfg(test)]
 mod tests;
 #[cfg(windows)]
@@ -88,6 +90,7 @@ pub struct DesktopRuntime<H: DesktopHost = PlatformHost> {
     user_transition: Arc<tokio::sync::Mutex<()>>,
     configuration_admission: Arc<tokio::sync::Semaphore>,
     configuration: Arc<EffectiveConfigurationLoader>,
+    rule_preparation_task: Arc<std::sync::Mutex<Option<tokio::task::JoinHandle<()>>>>,
     prepared_configuration: Arc<PreparedCoreConfiguration>,
     /// Why TUN mode stopped working on its own while it is being restored, or
     /// after it could not be; `None` otherwise. Not persisted.
@@ -119,6 +122,7 @@ struct PreparedCoreConfiguration {
 #[derive(Debug)]
 struct PreparedCoreStart {
     profile_id: String,
+    source_revision: String,
     fake_ip_range: egrio_core::dns::config::FakeIpRange,
     network: crate::profile_network_settings::ProfileNetworkConfig,
     capture_mtu: u32,
@@ -129,6 +133,7 @@ impl PreparedCoreStart {
     fn new(snapshot: crate::configuration::EffectiveConfigSnapshot, capture_mtu: u32) -> Self {
         Self {
             profile_id: snapshot.profile.id.clone(),
+            source_revision: snapshot.source_revision,
             fake_ip_range: snapshot.profile.dns.fake_ip_range,
             network: snapshot.network,
             capture_mtu,
@@ -206,11 +211,9 @@ struct RecoveryInitialization {
     complete: bool,
 }
 
-/// The active profile's configuration, with its rule providers fetched and
-/// the GEODATA its rules name. It is loaded only to start a Core, which
-/// cannot run without a profile, so a missing one fails the start here,
-/// before any capture work. Missing GEODATA does not hold the start: it is
-/// downloaded in the background and the profile restarts with it.
+/// Loads the active source and choices. Complete caches are materialized here;
+/// missing providers are prepared by the same Core before its listeners open.
+/// Missing GEODATA retains its independent background-fetch behavior.
 fn load_active_configuration() -> ConfigurationLoad {
     Box::pin(async {
         let store =
@@ -218,13 +221,21 @@ fn load_active_configuration() -> ConfigurationLoad {
         let Some(profile) = store.active_profile().map_err(|error| error.to_string())? else {
             return Err("no active profile: apply a profile first".into());
         };
-        crate::rule_provider_fetch::prepare_profile_rule_providers(profile.id).await?;
-        let mut snapshot = store
-            .active_configuration_snapshot()
+        let missing = store
+            .missing_rule_provider_fetch_targets(&profile.id)
             .map_err(|error| error.to_string())?;
-        if let Some(snapshot) = snapshot.as_mut() {
-            snapshot.profile.geodata = crate::geodata::content_for(&snapshot.profile);
-            crate::geodata::fetch_missing_in_background(&snapshot.profile);
+        let complete = missing.is_empty();
+        let mut snapshot = if complete {
+            store.active_configuration_snapshot()
+        } else {
+            store.active_settings_snapshot()
+        }
+        .map_err(|error| error.to_string())?;
+        if complete {
+            if let Some(snapshot) = snapshot.as_mut() {
+                snapshot.profile.geodata = crate::geodata::content_for(&snapshot.profile);
+                crate::geodata::fetch_missing_in_background(&snapshot.profile);
+            }
         }
         Ok(snapshot)
     })
@@ -295,6 +306,7 @@ impl<H: DesktopHost> DesktopRuntime<H> {
             user_transition: Arc::new(tokio::sync::Mutex::new(())),
             configuration_admission: Arc::new(tokio::sync::Semaphore::new(16)),
             configuration,
+            rule_preparation_task: Arc::default(),
             prepared_configuration,
             tun_interruption: Arc::default(),
         }
@@ -408,14 +420,73 @@ impl<H: DesktopHost> DesktopRuntime<H> {
             None => self.host.default_capture_mtu()?,
         };
         egrio_core::NativeCoreCaptureConfig::default().with_mtu(capture_mtu)?;
-        let snapshot = (self.configuration)().await?;
+        let mut snapshot = (self.configuration)().await?;
+        if snapshot
+            .as_ref()
+            .is_some_and(|snapshot| rule_preparation::needs_providers(&snapshot.profile))
+        {
+            let runtime = self
+                .existing_desktop_runtime()
+                .expect("Runtime created before Core preparation");
+            if runtime.status().state == RuntimeState::Running {
+                crate::rule_provider_fetch::prepare_via_core(
+                    snapshot.as_ref().unwrap().profile.id.clone(),
+                    runtime,
+                )
+                .await?;
+                snapshot = (self.configuration)().await?;
+            }
+        }
+        let pending = snapshot
+            .as_ref()
+            .is_some_and(|snapshot| rule_preparation::needs_providers(&snapshot.profile));
         let spec = runtime_spec_with_profile(spec, snapshot.as_ref())?;
+        let previous_source = self
+            .prepared_configuration
+            .inputs
+            .read()
+            .expect("configuration preparation lock")
+            .as_ref()
+            .map(|prepared| prepared.source_revision.clone());
+        if pending {
+            snapshot.as_mut().unwrap().profile.rules = Default::default();
+        }
         *self
             .prepared_configuration
             .inputs
             .write()
             .map_err(|_| "configuration preparation lock poisoned".to_string())? =
             snapshot.map(|snapshot| Arc::new(PreparedCoreStart::new(snapshot, capture_mtu)));
+        if pending {
+            let runtime = self
+                .existing_desktop_runtime()
+                .expect("Core preparation Runtime");
+            let prepared = self.prepared_configuration.get()?;
+            if runtime.status().state == RuntimeState::Preparing
+                && previous_source.as_deref() != Some(prepared.source_revision.as_str())
+            {
+                self.cancel_rule_preparation();
+                runtime.stop().await.map_err(|error| error.to_string())?;
+            }
+            let generation = runtime.prepare_core(spec.clone()).await?;
+            self.start_rule_preparation(
+                runtime,
+                generation,
+                prepared.profile_id.clone(),
+                prepared.source_revision.clone(),
+            );
+        } else if let Some(runtime) = self
+            .existing_desktop_runtime()
+            .filter(|runtime| runtime.status().state == RuntimeState::Preparing)
+        {
+            self.cancel_rule_preparation();
+            let generation = runtime.prepare_core(spec.clone()).await?;
+            let profile = self.prepared_configuration.get()?.take_profile()?;
+            runtime
+                .activate_prepared_core(generation, profile)
+                .await
+                .map_err(|error| error.to_string())?;
+        }
         Ok(spec)
     }
 
@@ -462,7 +533,7 @@ impl<H: DesktopHost> DesktopRuntime<H> {
             .map_err(|error| format!("update the destinations kept outside the TUN: {error}"))
     }
 
-    fn existing_desktop_runtime(&self) -> Option<Arc<Runtime>> {
+    pub(crate) fn existing_desktop_runtime(&self) -> Option<Arc<Runtime>> {
         self.runtime.get().cloned()
     }
 
@@ -490,7 +561,7 @@ impl<H: DesktopHost> DesktopRuntime<H> {
             .filter(|status| {
                 !matches!(
                     status.runtime.state,
-                    RuntimeState::Created | RuntimeState::Stopped
+                    RuntimeState::Created | RuntimeState::Preparing | RuntimeState::Stopped
                 )
             })
             .map_or(CaptureLayers::NONE, |status| {
@@ -531,7 +602,10 @@ impl<H: DesktopHost> DesktopRuntime<H> {
     /// The profile the running Core serves.
     pub fn running_profile_id(&self) -> Option<String> {
         let runtime = self.existing_desktop_runtime()?;
-        if runtime.status().state != RuntimeState::Running {
+        if !matches!(
+            runtime.status().state,
+            RuntimeState::Preparing | RuntimeState::Running
+        ) {
             return None;
         }
         let prepared = self.prepared_configuration.get().ok()?;
@@ -673,6 +747,13 @@ impl<H: DesktopHost> DesktopRuntime<H> {
             crate::events::notify_native_state_changed();
             Ok(match result {
                 Ok(false) => ProfileConfigurationUpdateReport::saved(false),
+                Ok(true) if sdk.core_preparation().is_some() => ProfileConfigurationUpdateReport {
+                    operation_id: None,
+                    phase: ProfileConfigurationPhase::PendingApply,
+                    applied: false,
+                    generation: None,
+                    error: None,
+                },
                 Ok(true) => ProfileConfigurationUpdateReport {
                     operation_id: None,
                     phase: ProfileConfigurationPhase::Applied,
@@ -698,6 +779,9 @@ impl<H: DesktopHost> DesktopRuntime<H> {
     pub async fn apply_capture_layers(&self, target: CaptureLayers) -> Result<(), String> {
         let mut host = self.begin_host_transition().await?;
         let runtime = self.desktop_runtime().await?;
+        if !target.any() {
+            self.cancel_rule_preparation();
+        }
         if target.any() {
             // Held before Core or capture changes so a switch never opens an
             // App Nap window.
@@ -737,7 +821,7 @@ impl<H: DesktopHost> DesktopRuntime<H> {
         self.domain_status().is_some_and(|status| {
             !matches!(
                 status.runtime.state,
-                RuntimeState::Created | RuntimeState::Stopped
+                RuntimeState::Created | RuntimeState::Preparing | RuntimeState::Stopped
             ) && spec_capture_layers(&status.spec).any()
         })
     }
@@ -758,6 +842,11 @@ impl<H: DesktopHost> DesktopRuntime<H> {
         let Some(runtime) = self.existing_desktop_runtime() else {
             return Ok(false);
         };
+        if runtime.status().state == RuntimeState::Preparing {
+            self.cancel_rule_preparation();
+            self.core_start_spec(runtime.spec()).await?;
+            return Ok(true);
+        }
         if !runtime_core_update_available(&runtime)? {
             return Ok(false);
         }
@@ -796,6 +885,7 @@ impl<H: DesktopHost> DesktopRuntime<H> {
         &self,
         host: &mut HostTransition<H::Activity>,
     ) -> Result<(), String> {
+        self.cancel_rule_preparation();
         let runtime = self.existing_desktop_runtime();
         let stopped = if let Some(runtime) = runtime.as_ref() {
             let quiesced = runtime.quiesce_core().await;
@@ -894,6 +984,7 @@ impl<H: DesktopHost> DesktopRuntime<H> {
     /// later transition can start capture again.
     pub async fn shutdown(&self) -> Result<(), String> {
         let mut host = self.lifecycle.shutdown().await;
+        self.cancel_rule_preparation();
         self.initialize().await?;
         let stopped = match self.existing_desktop_runtime() {
             Some(runtime)
@@ -932,6 +1023,7 @@ enum LayerSwitch {
     Started,
     /// The running Core generation now carries the target layers.
     Reloaded,
+    Preparing,
     Stopped,
 }
 
@@ -955,13 +1047,20 @@ where
         recover_degraded_runtime(runtime, &spec_for).await?;
     }
     match runtime.status().state {
+        RuntimeState::Preparing if !target.any() => {
+            runtime.stop().await.map_err(|error| error.to_string())?;
+            Ok(LayerSwitch::Stopped)
+        }
         RuntimeState::Created | RuntimeState::Stopped if !target.any() => Ok(if recovered {
             LayerSwitch::Stopped
         } else {
             LayerSwitch::Unchanged
         }),
-        RuntimeState::Created | RuntimeState::Stopped => {
+        RuntimeState::Created | RuntimeState::Stopped | RuntimeState::Preparing => {
             let spec = prepare_start(spec_for(target)?).await?;
+            if runtime.status().state == RuntimeState::Preparing {
+                return Ok(LayerSwitch::Preparing);
+            }
             runtime
                 .start_with_spec(spec)
                 .await
@@ -1138,6 +1237,7 @@ impl<H: DesktopHost> Clone for DesktopRuntime<H> {
             user_transition: self.user_transition.clone(),
             configuration_admission: self.configuration_admission.clone(),
             configuration: self.configuration.clone(),
+            rule_preparation_task: self.rule_preparation_task.clone(),
             prepared_configuration: self.prepared_configuration.clone(),
             tun_interruption: self.tun_interruption.clone(),
         }

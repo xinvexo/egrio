@@ -271,7 +271,7 @@ async fn queued_operation_is_rejected_after_stop_and_start_replace_generation() 
     // task; it must never reinterpret the old request against the new Core.
     let mut stop = Box::pin(runtime.stop_transaction());
     park(stop.as_mut());
-    let mut start = Box::pin(runtime.start_transaction(None));
+    let mut start = Box::pin(runtime.start_transaction(None, None));
     park(start.as_mut());
     let saved = Arc::new(AtomicUsize::new(0));
     let record = saved.clone();

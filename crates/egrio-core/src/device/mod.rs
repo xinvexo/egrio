@@ -65,6 +65,8 @@ mod flows;
 /// The active health-probe subsystem; the `kick_probe_loop` waker stays in
 /// this file because the lifecycle methods fire it.
 mod health;
+mod outbound;
+pub use outbound::CoreOutboundStream;
 mod policy;
 /// The packet-device pump (the TCP engine's driver); shared packet helpers
 /// and the run types stay in this file.

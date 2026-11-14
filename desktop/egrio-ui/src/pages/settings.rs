@@ -108,6 +108,20 @@ fn network(state: &State) -> Node {
     );
     rows.push(setting_row(text.tun(), None, tun_controls));
 
+    if let Some(preparing) = status.and_then(|status| status.preparation.as_ref()) {
+        let controls = if preparing.error.is_some() {
+            vec![button(text.retry_preparation(), ButtonStyle::Secondary)
+                .on_press(Msg::RetryPreparation)]
+        } else {
+            Vec::new()
+        };
+        rows.push(setting_row(
+            text.preparing_rules(),
+            preparing.error.clone(),
+            controls,
+        ));
+    }
+
     // The profile's settings, as the running Core has them where it runs it.
     let network = state
         .network
@@ -120,7 +134,7 @@ fn network(state: &State) -> Node {
                 .and_then(Option::as_ref)
                 .is_some_and(|profile| profile.id == network.profile_id)
         });
-    let available = network.is_some() && !waiting;
+    let available = network.is_some() && !waiting && !state.downloading_rules();
     let network_switch = |setting: ProfileNetworkSetting, saved: bool, key: &'static str| {
         switch(state.network_on(setting, saved), available, move |on| {
             Msg::Settings(SettingsMsg::SetNetwork(setting, on))

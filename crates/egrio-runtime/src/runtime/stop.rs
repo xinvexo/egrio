@@ -28,7 +28,10 @@ impl Runtime {
                 resources: RuntimeDomainReport::default(),
             });
         }
-        if initial_state == RuntimeState::Created {
+        if matches!(
+            initial_state,
+            RuntimeState::Created | RuntimeState::Preparing
+        ) {
             self.stop_owned_core_after_restore().await?;
             let mut control = self.control.lock().expect("runtime control mutex");
             control.state = RuntimeState::Stopped;
