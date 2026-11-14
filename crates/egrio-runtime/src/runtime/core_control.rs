@@ -331,7 +331,7 @@ impl Runtime {
             .as_ref()
             .expect("validated core config source")
             .clone();
-        let report = self
+        let started = self
             .core
             .ensure_with_listener(
                 || {
@@ -350,7 +350,18 @@ impl Runtime {
                 core_spec.dns_listen_addr,
                 core_spec.listen_port_fallback,
             )
-            .await?;
+            .await;
+        let report = match started {
+            Ok(report) => report,
+            Err(error) => {
+                // A listener that could not start closed its generation, a
+                // prepared one included: the Runtime no longer owns one.
+                if self.core.packet_device().is_none() {
+                    self.control.lock().expect("runtime control mutex").core = None;
+                }
+                return Err(error);
+            }
+        };
         if !report.started_by_call {
             // A transaction starts a Core only where none runs: the Runtime
             // stops the generation it started before it is Created or

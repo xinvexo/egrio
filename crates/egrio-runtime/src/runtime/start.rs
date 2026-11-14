@@ -2,11 +2,34 @@
 //! order, committing only after every one is observed.
 use super::*;
 
+/// What a start transaction starts.
+pub(super) enum StartRequest {
+    /// The committed spec.
+    Committed,
+    /// A replacement spec.
+    Spec(RuntimeSpec),
+    /// The generation `prepare_core` made, with its complete profile.
+    Prepared {
+        generation: RuntimeCoreGeneration,
+        profile: egrio_core::RuntimeProfile,
+    },
+}
+
 impl Runtime {
+    /// A spec a caller asks this Runtime to take: valid, its own, and served
+    /// by the ports it was assembled with.
+    pub(super) fn validate_requested_spec(&self, spec: &RuntimeSpec) -> Result<(), String> {
+        spec.validate().map_err(|error| error.to_string())?;
+        if spec.id != self.id() {
+            return Err("a spec cannot change the runtime id".into());
+        }
+        validate_ports(spec, &self.ports).map_err(|error| error.to_string())
+    }
+
     pub async fn start(self: &Arc<Self>) -> Result<RuntimeStartReport, RuntimeStartError> {
         let runtime = self.clone();
         self.spawn(async move {
-            let report = runtime.start_transaction(None, None).await?;
+            let report = runtime.start_transaction(StartRequest::Committed).await?;
             // Attach the disconnect watcher inside the spawned task, not in the
             // caller's future: the transaction runs detached precisely so a
             // dropped caller future cannot corrupt it, and a runtime committed
@@ -27,7 +50,7 @@ impl Runtime {
     ) -> Result<RuntimeStartReport, RuntimeStartError> {
         let runtime = self.clone();
         self.spawn(async move {
-            let report = runtime.start_transaction(Some(spec), None).await?;
+            let report = runtime.start_transaction(StartRequest::Spec(spec)).await?;
             runtime.sync_health_watcher().await;
             Ok(report)
         })
@@ -75,38 +98,37 @@ impl Runtime {
 
     pub(super) async fn start_transaction(
         self: &Arc<Self>,
-        requested_spec: Option<RuntimeSpec>,
-        prepared: Option<(RuntimeCoreGeneration, egrio_core::RuntimeProfile)>,
+        request: StartRequest,
     ) -> Result<RuntimeStartReport, RuntimeStartError> {
         let _operation = self.operation.lock().await;
         self.clear_session_loss();
-        let activating_prepared = prepared.is_some();
-        if self.status().state == RuntimeState::Preparing && !activating_prepared {
-            return Err(RuntimeStartError::InvalidState(RuntimeState::Preparing));
-        }
-        if let Some((generation, profile)) = prepared {
-            let status = self.domain_status();
-            if status.runtime.state != RuntimeState::Preparing
-                || status.core.map(|core| core.generation) != Some(generation)
-            {
-                return Err(RuntimeStartError::InvalidState(status.runtime.state));
+        let (requested_spec, prepared) = match request {
+            StartRequest::Committed => (None, None),
+            StartRequest::Spec(spec) => {
+                self.validate_requested_spec(&spec)
+                    .map_err(RuntimeStartError::UnsupportedSpec)?;
+                (Some(spec), None)
             }
-            self.core
-                .packet_device()
-                .expect("prepared Core device")
-                .apply_profile(&profile);
-        }
-        if let Some(spec) = requested_spec.as_ref() {
-            spec.validate()
-                .map_err(|error| RuntimeStartError::UnsupportedSpec(error.to_string()))?;
-            if spec.id != self.id() {
-                return Err(RuntimeStartError::UnsupportedSpec(
-                    "start cannot change runtime id".into(),
-                ));
+            StartRequest::Prepared {
+                generation,
+                profile,
+            } => {
+                let status = self.domain_status();
+                // Only the generation the caller prepared is activated: a stop
+                // or another preparation since then made the request stale.
+                let device = self
+                    .core
+                    .packet_device()
+                    .filter(|_| {
+                        status.runtime.state == RuntimeState::Preparing
+                            && status.core.map(|core| core.generation) == Some(generation)
+                    })
+                    .ok_or(RuntimeStartError::InvalidState(status.runtime.state))?;
+                self.validate_packet_core_mtu(&status.spec)
+                    .map_err(RuntimeStartError::Core)?;
+                (None, Some((device, profile)))
             }
-            validate_ports(spec, &self.ports)
-                .map_err(|error| RuntimeStartError::UnsupportedSpec(error.to_string()))?;
-        }
+        };
         {
             let mut control = self.control.lock().expect("runtime control mutex");
             if control.state == RuntimeState::Running {
@@ -142,10 +164,12 @@ impl Runtime {
                     resources,
                 });
             }
-            if !matches!(
-                control.state,
-                RuntimeState::Created | RuntimeState::Stopped | RuntimeState::Preparing
-            ) {
+            // A prepared generation starts only through its activation.
+            let startable = match prepared {
+                Some(_) => control.state == RuntimeState::Preparing,
+                None => matches!(control.state, RuntimeState::Created | RuntimeState::Stopped),
+            };
+            if !startable {
                 return Err(RuntimeStartError::InvalidState(control.state));
             }
             if let Some(spec) = requested_spec {
@@ -154,6 +178,9 @@ impl Runtime {
             control.state = RuntimeState::Starting;
         }
         let spec = self.spec();
+        if let Some((device, profile)) = prepared {
+            device.apply_profile(&profile);
+        }
 
         // The spec-declared Core and its listener come first: a listener bind
         // failure must surface before any lease is acquired, any checkpoint

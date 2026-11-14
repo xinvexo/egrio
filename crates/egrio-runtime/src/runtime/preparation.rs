@@ -11,22 +11,22 @@ impl Runtime {
         let runtime = self.clone();
         self.spawn(async move {
             let _operation = runtime.operation.lock().await;
-            spec.validate().map_err(|error| error.to_string())?;
-            if spec.id != runtime.id() || spec.core.is_none() {
-                return Err("Core preparation requires this Runtime's Core spec".into());
-            }
-            validate_ports(&spec, &runtime.ports).map_err(|error| error.to_string())?;
+            runtime.validate_requested_spec(&spec)?;
+            // A spec with a Core has its source: the ports were checked.
+            let Some(source) = runtime
+                .ports
+                .core_config
+                .as_ref()
+                .filter(|_| spec.core.is_some())
+            else {
+                return Err("Core preparation requires a Core spec".into());
+            };
             if !matches!(
                 runtime.status().state,
                 RuntimeState::Created | RuntimeState::Stopped | RuntimeState::Preparing
             ) {
                 return Err("Core preparation requires a stopped or preparing Runtime".into());
             }
-            let source = runtime
-                .ports
-                .core_config
-                .as_ref()
-                .expect("validated Core source");
             let generation = runtime.core.prepare_with(|| source.load()).await?;
             let mut control = runtime.control.lock().expect("runtime control mutex");
             control.core = Some(generation);
@@ -48,7 +48,10 @@ impl Runtime {
         let runtime = self.clone();
         self.spawn(async move {
             let report = runtime
-                .start_transaction(None, Some((generation, profile)))
+                .start_transaction(start::StartRequest::Prepared {
+                    generation,
+                    profile,
+                })
                 .await?;
             runtime.sync_health_watcher().await;
             Ok(report)
@@ -75,9 +78,9 @@ impl Runtime {
     ) -> Result<egrio_core::CoreOutboundStream, String> {
         let device = {
             let _operation = self.operation.lock().await;
-            self.core_update_admission()?;
-            self.core
-                .packet_device()
+            self.core_update_admission()?
+                .then(|| self.core.packet_device())
+                .flatten()
                 .ok_or("Runtime has no active Core")?
         };
         device.connect_outbound(outbound, host, port).await

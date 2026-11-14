@@ -577,3 +577,92 @@ async fn a_taken_listener_port_fails_the_start_unless_the_spec_lets_another_stan
     );
     lenient.stop().await.unwrap();
 }
+
+/// A Core runtime on a port nothing else holds, so a connection attempt
+/// tells whether its listener is open.
+async fn core_runtime_on_a_free_port() -> (Arc<Runtime>, SocketAddr) {
+    let reserved = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = reserved.local_addr().unwrap();
+    drop(reserved);
+    (core_runtime_listening_on(address, false), address)
+}
+
+#[tokio::test]
+async fn a_prepared_core_opens_its_ingress_only_through_its_own_activation() {
+    let (runtime, listener) = core_runtime_on_a_free_port().await;
+    let generation = runtime.prepare_core(runtime.spec()).await.unwrap();
+    assert_eq!(runtime.status().state, RuntimeState::Preparing);
+    assert!(tokio::net::TcpStream::connect(listener).await.is_err());
+    assert!(runtime.core_status().dns_listen_addr.is_none());
+    assert_eq!(
+        runtime.prepare_core(runtime.spec()).await.unwrap(),
+        generation,
+        "preparing again keeps the prepared generation"
+    );
+
+    assert!(matches!(
+        runtime.start().await,
+        Err(RuntimeStartError::InvalidState(RuntimeState::Preparing))
+    ));
+    let stale = RuntimeCoreGeneration::new(generation.get() + 1);
+    assert!(matches!(
+        runtime
+            .activate_prepared_core(stale, egrio_core::RuntimeProfile::new("stale"))
+            .await,
+        Err(RuntimeStartError::InvalidState(RuntimeState::Preparing))
+    ));
+    assert_eq!(runtime.status().state, RuntimeState::Preparing);
+
+    runtime
+        .activate_prepared_core(generation, egrio_core::RuntimeProfile::new("complete"))
+        .await
+        .unwrap();
+    assert_eq!(runtime.status().state, RuntimeState::Running);
+    assert_eq!(runtime.domain_status().core.unwrap().generation, generation);
+    assert_eq!(
+        runtime.effective_core_policy().unwrap().profile_id,
+        "complete"
+    );
+    tokio::net::TcpStream::connect(listener).await.unwrap();
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn a_failed_activation_leaves_no_core_generation_behind() {
+    let (runtime, listener) = core_runtime_on_a_free_port().await;
+    let generation = runtime.prepare_core(runtime.spec()).await.unwrap();
+    let holder = tokio::net::TcpListener::bind(listener).await.unwrap();
+
+    let error = runtime
+        .activate_prepared_core(generation, egrio_core::RuntimeProfile::new("complete"))
+        .await
+        .unwrap_err();
+    assert!(matches!(error, RuntimeStartError::Core(_)), "{error}");
+    assert_eq!(runtime.status().state, RuntimeState::Created);
+    assert!(
+        runtime.domain_status().core.is_none(),
+        "the generation the failed start closed is no longer the Runtime's"
+    );
+    assert!(runtime.core.packet_device().is_none());
+
+    drop(holder);
+    runtime.start().await.unwrap();
+    assert_ne!(runtime.domain_status().core.unwrap().generation, generation);
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn stopping_a_prepared_core_closes_it() {
+    let (runtime, _) = core_runtime_on_a_free_port().await;
+    let generation = runtime.prepare_core(runtime.spec()).await.unwrap();
+    runtime.stop().await.unwrap();
+    assert_eq!(runtime.status().state, RuntimeState::Stopped);
+    assert!(runtime.domain_status().core.is_none());
+    assert!(runtime.core.packet_device().is_none());
+    assert!(matches!(
+        runtime
+            .activate_prepared_core(generation, egrio_core::RuntimeProfile::new("late"))
+            .await,
+        Err(RuntimeStartError::InvalidState(RuntimeState::Stopped))
+    ));
+}

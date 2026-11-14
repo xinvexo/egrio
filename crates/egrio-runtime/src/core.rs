@@ -211,8 +211,7 @@ impl RuntimeCore {
             });
         }
 
-        let generation = self.prepare_locked(start_inputs, &mut lifecycle)?;
-        let device = self.packet_device().expect("prepared Core device");
+        let (generation, device) = self.prepare_locked(start_inputs, &mut lifecycle)?;
         let mut rollback = CoreStartRollback {
             owner: self,
             lifecycle: &mut lifecycle,
@@ -233,24 +232,29 @@ impl RuntimeCore {
     }
 
     /// Creates the generation's device without opening ordinary listeners.
+    /// A generation already prepared is kept as it was made: `start_inputs`
+    /// is read only for a new one.
     pub async fn prepare_with<F>(&self, start_inputs: F) -> Result<RuntimeCoreGeneration, String>
     where
         F: FnOnce() -> Result<CoreStartInputs, String>,
     {
         let mut lifecycle = self.lifecycle.lock().await;
         self.prepare_locked(start_inputs, &mut lifecycle)
+            .map(|(generation, _)| generation)
     }
 
+    /// The active generation and its device, made here when there is none.
+    /// Both are written together under the lifecycle lock.
     fn prepare_locked<F>(
         &self,
         start_inputs: F,
         lifecycle: &mut RuntimeCoreLifecycle,
-    ) -> Result<RuntimeCoreGeneration, String>
+    ) -> Result<(RuntimeCoreGeneration, NativeCoreDevice), String>
     where
         F: FnOnce() -> Result<CoreStartInputs, String>,
     {
-        if let Some(generation) = lifecycle.active_generation {
-            return Ok(generation);
+        if let Some(active) = lifecycle.active_generation.zip(self.packet_device()) {
+            return Ok(active);
         }
         let inputs = start_inputs()?;
         inputs.capture.validate()?;
@@ -261,9 +265,9 @@ impl RuntimeCore {
         let generation = RuntimeCoreGeneration(lifecycle.next_generation);
         let device = NativeCoreDevice::from_start_inputs(inputs);
         drop(device.spawn_health_probe_loop());
-        self.replace_device_slot(Some(device));
+        self.replace_device_slot(Some(device.clone()));
         lifecycle.active_generation = Some(generation);
-        Ok(generation)
+        Ok((generation, device))
     }
 
     fn replace_device_slot(&self, device: Option<NativeCoreDevice>) {
