@@ -3,7 +3,6 @@ name = "egrio-sdk"
 version.workspace = true
 edition.workspace = true
 description = "Recommended in-process assembly facade for Egrio"
-license.workspace = true
 license-file.workspace = true
 
 [dependencies]

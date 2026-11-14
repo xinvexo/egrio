@@ -3,7 +3,6 @@ name = "egrio-core"
 version.workspace = true
 edition.workspace = true
 description = "Reusable native proxy core for Egrio"
-license.workspace = true
 license-file.workspace = true
 
 [dependencies]

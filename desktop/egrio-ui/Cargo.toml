@@ -3,7 +3,6 @@ name = "egrio-ui"
 version.workspace = true
 description = "Egrio's desktop interface: its components, the reconciler, and every window described once over the product backend"
 edition.workspace = true
-license.workspace = true
 license-file.workspace = true
 
 [dependencies]

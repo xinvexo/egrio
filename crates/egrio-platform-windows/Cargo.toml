@@ -3,7 +3,6 @@ name = "egrio-platform-windows"
 version.workspace = true
 edition.workspace = true
 description = "Windows platform capture adapter for Egrio"
-license.workspace = true
 license-file.workspace = true
 
 [dependencies]

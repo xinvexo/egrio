@@ -3,7 +3,6 @@ name = "egrio-platform-linux"
 version.workspace = true
 edition.workspace = true
 description = "Linux platform capture adapter for Egrio"
-license.workspace = true
 license-file.workspace = true
 
 [dependencies]

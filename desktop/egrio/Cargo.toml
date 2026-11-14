@@ -3,7 +3,6 @@ name = "egrio"
 version.workspace = true
 description = "The Egrio desktop app: its entry point and the platform backends"
 edition.workspace = true
-license.workspace = true
 license-file.workspace = true
 
 [features]

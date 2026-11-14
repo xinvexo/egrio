@@ -3,7 +3,6 @@ name = "egrio-service"
 version.workspace = true
 edition.workspace = true
 description = "Privileged capability adapter service for Egrio (Windows service, Linux helper, macOS launchd service)"
-license.workspace = true
 license-file.workspace = true
 
 [lib]

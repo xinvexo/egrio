@@ -3,7 +3,6 @@ name = "xtask"
 version.workspace = true
 description = "The repository's tasks, run as cargo xtask: the checks, the desktop app's package and icons, and the DLLs the Windows builds load"
 edition.workspace = true
-license.workspace = true
 license-file.workspace = true
 publish = false
 

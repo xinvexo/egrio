@@ -3,7 +3,6 @@ name = "egrio-platform"
 version.workspace = true
 edition.workspace = true
 description = "Shared platform contracts for Egrio: capture layers, system proxy, process display and ping sockets"
-license.workspace = true
 license-file.workspace = true
 
 [dependencies]

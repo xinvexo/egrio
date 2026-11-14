@@ -3,7 +3,6 @@ name = "egrio-platform-macos"
 version.workspace = true
 edition.workspace = true
 description = "macOS platform adapters for Egrio: the TUN, egress binding, system proxy and process attribution"
-license.workspace = true
 license-file.workspace = true
 
 [dependencies]

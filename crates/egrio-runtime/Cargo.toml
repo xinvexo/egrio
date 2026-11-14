@@ -3,7 +3,6 @@ name = "egrio-runtime"
 version.workspace = true
 edition.workspace = true
 description = "Runtime lifecycle and platform capability contracts for Egrio"
-license.workspace = true
 license-file.workspace = true
 
 [dependencies]

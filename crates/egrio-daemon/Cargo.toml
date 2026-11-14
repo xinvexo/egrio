@@ -3,7 +3,6 @@ name = "egrio-daemon"
 version.workspace = true
 edition.workspace = true
 description = "Non-GUI runtime composition for Egrio"
-license.workspace = true
 license-file.workspace = true
 
 [dependencies]

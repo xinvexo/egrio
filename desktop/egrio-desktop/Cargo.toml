@@ -3,7 +3,6 @@ name = "egrio-desktop"
 version.workspace = true
 description = "Egrio's desktop product backend: profiles, settings, the Runtime host and telemetry history"
 edition.workspace = true
-license.workspace = true
 license-file.workspace = true
 
 # The memory instrument reads the composition behind that feature, so it
